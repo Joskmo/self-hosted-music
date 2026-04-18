@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeTube — Music Server</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+    body { display: flex; flex-direction: column; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #1e293b; color: #fff; }
+    .toolbar a { color: #93c5fd; text-decoration: none; font-size: 14px; }
+    .toolbar a:hover { color: #fff; }
+    iframe { flex: 1; border: none; width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span>MeTube — загрузка с YouTube</span>
+    <a href="/upload">← Назад к загрузке файлов</a>
+  </div>
+  <iframe id="metube"></iframe>
+  <script>
+    const iframe = document.getElementById('metube');
+    iframe.src = '/metube/proxy/';
+  </script>
+</body>
+</html>

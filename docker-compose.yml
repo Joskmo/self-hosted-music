@@ -1,0 +1,81 @@
+services:
+  navidrome:
+    image: deluan/navidrome:latest
+    user: 1000:1000
+    restart: unless-stopped
+    environment:
+      ND_SCANSCHEDULE: 1h
+      ND_LOGLEVEL: info
+      ND_SESSIONTIMEOUT: 24h
+      ND_BASEURL: ""
+    volumes:
+      - ./data:/data
+      - ./music:/music:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.navidrome.rule=Host(`${NAVIDROME_DOMAIN}`)"
+      - "traefik.http.routers.navidrome.entrypoints=websecure"
+      - "traefik.http.routers.navidrome.tls=true"
+      - "traefik.http.routers.navidrome.service=navidrome"
+      - "traefik.http.services.navidrome.loadbalancer.server.port=4533"
+    networks:
+      - web
+      - internal
+
+  metube:
+    image: ghcr.io/alexta69/metube:latest
+    restart: unless-stopped
+    environment:
+      - UID=1000
+      - GID=1000
+    volumes:
+      - ./music:/downloads
+    networks:
+      - internal
+
+  auth-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auth
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+    volumes:
+      - ./auth-db-data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  auth-panel:
+    build: ./auth-panel
+    restart: unless-stopped
+    environment:
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_NAME: auth
+      DB_USER: auth
+      DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      NAVIDROME_URL: http://navidrome:4533
+      NAVIDROME_ADMIN_USER: ${NAVIDROME_ADMIN_USER}
+      NAVIDROME_ADMIN_PASSWORD: ${NAVIDROME_ADMIN_PASSWORD}
+      ADMIN_PASSWORD_HASH: ${AUTH_ADMIN_PASSWORD_HASH}
+      MUSIC_DIR: /music
+      METUBE_URL: http://metube:8081
+    volumes:
+      - ./music:/music
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth-panel.rule=Host(`${AUTH_PANEL_DOMAIN}`)"
+      - "traefik.http.routers.auth-panel.entrypoints=websecure"
+      - "traefik.http.routers.auth-panel.tls=true"
+      - "traefik.http.services.auth-panel.loadbalancer.server.port=3000"
+    networks:
+      - web
+      - internal
+    depends_on:
+      - auth-db
+
+networks:
+  web:
+    external: true
+  internal:
+    driver: bridge

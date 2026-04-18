@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Загрузка музыки — Music Server</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 500px; margin: 60px auto; padding: 0 20px; background: #f9fafb; }
+    h2 { color: #111827; }
+    input[type="text"], input[type="password"] { width: 100%; padding: 10px; margin: 6px 0 16px; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 6px; }
+    button { padding: 10px 20px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; width: 100%; }
+    button:hover { background: #1d4ed8; }
+    .error { color: #dc2626; background: #fef2f2; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
+    .success { color: #16a34a; background: #f0fdf4; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
+    .drop-zone { border: 2px dashed #d1d5db; border-radius: 8px; padding: 30px; text-align: center; margin: 16px 0; cursor: pointer; transition: border-color 0.2s; }
+    .drop-zone:hover, .drop-zone.drag { border-color: #2563eb; background: #eff6ff; }
+    .drop-zone input { display: none; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab { padding: 8px 16px; border-radius: 6px; cursor: pointer; background: #e5e7eb; border: none; font-size: 14px; width: auto; }
+    .tab.active { background: #2563eb; color: #fff; }
+    .links { margin-top: 24px; font-size: 14px; }
+    .links a { color: #2563eb; text-decoration: none; }
+    #fileList { margin: 12px 0; font-size: 14px; color: #374151; }
+  </style>
+</head>
+<body>
+  <h2>Загрузка музыки</h2>
+  <div id="loginSection">
+    <label>Логин</label>
+    <input type="text" id="username" autocomplete="username">
+    <label>Пароль</label>
+    <input type="password" id="password" autocomplete="current-password">
+    <button onclick="doLogin()">Войти</button>
+  </div>
+  <div id="uploadSection" style="display:none">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('files')">Файлы</button>
+      <button class="tab" onclick="switchTab('zip')">Архив (zip)</button>
+    </div>
+    <div id="msg"></div>
+    <div id="filesTab">
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" multiple accept=".mp3,.flac,.wav,.ogg,.m4a,.aac,.wma,.opus">
+        <div>Нажмите или перетащите файлы сюда</div>
+      </div>
+      <div id="fileList"></div>
+      <button onclick="uploadFiles()">Загрузить</button>
+    </div>
+    <div id="zipTab" style="display:none">
+      <div class="drop-zone" onclick="document.getElementById('zipInput').click()">
+        <input type="file" id="zipInput" accept=".zip">
+        <div>Загрузить zip-архив с музыкой</div>
+      </div>
+      <button onclick="uploadZip()">Загрузить архив</button>
+    </div>
+  </div>
+  <div class="links">
+    <a href="/register">Регистрация</a> &middot;
+    <a href="/admin">Админ-панель</a> &middot;
+    <a href="/metube">Скачать с YouTube</a>
+  </div>
+  <script>
+    async function doLogin() {
+      const user = document.getElementById('username').value;
+      const pass = document.getElementById('password').value;
+      if (!user || !pass) return alert('Введите логин и пароль');
+      const msg = document.getElementById('msg');
+      try {
+        const r = await fetch('/api/upload/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: user, password: pass }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('uploadSection').style.display = 'block';
+      } catch (err) {
+        msg.className = 'error';
+        msg.textContent = err.message;
+      }
+    }
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('filesTab').style.display = tab === 'files' ? 'block' : 'none';
+      document.getElementById('zipTab').style.display = tab === 'zip' ? 'block' : 'none';
+      event.target.classList.add('active');
+    }
+    const fileInput = document.getElementById('fileInput');
+    fileInput.addEventListener('change', () => {
+      document.getElementById('fileList').textContent = Array.from(fileInput.files).map(f => f.name).join(', ');
+    });
+    const dropZone = document.getElementById('dropZone');
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag');
+      fileInput.files = e.dataTransfer.files;
+      document.getElementById('fileList').textContent = Array.from(e.dataTransfer.files).map(f => f.name).join(', ');
+    });
+    async function uploadFiles() {
+      const msg = document.getElementById('msg');
+      const files = fileInput.files;
+      if (!files.length) return alert('Выберите файлы');
+      const fd = new FormData();
+      for (const f of files) fd.append('files', f);
+      try {
+        const r = await fetch('/api/upload', {
+          method: 'POST',
+          body: fd,
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        msg.className = 'success';
+        msg.textContent = 'Загружено: ' + j.saved.join(', ');
+      } catch (e) {
+        msg.className = 'error';
+        msg.textContent = e.message;
+      }
+    }
+    async function uploadZip() {
+      const msg = document.getElementById('msg');
+      const file = document.getElementById('zipInput').files[0];
+      if (!file) return alert('Выберите zip-архив');
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const r = await fetch('/api/upload/zip', {
+          method: 'POST',
+          body: fd,
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        msg.className = 'success';
+        msg.textContent = 'Распаковано: ' + j.saved.length + ' файлов';
+      } catch (e) {
+        msg.className = 'error';
+        msg.textContent = e.message;
+      }
+    }
+  </script>
+</body>
+</html>

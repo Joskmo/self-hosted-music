@@ -1,0 +1,74 @@
+# Локальный compose — без Traefik, с прямыми портами
+# Запуск: docker compose -f docker-compose.local.yml up -d
+
+services:
+  navidrome:
+    image: deluan/navidrome:latest
+    user: 1000:1000
+    restart: unless-stopped
+    ports:
+      - "4533:4533"
+    environment:
+      ND_SCANSCHEDULE: 1h
+      ND_LOGLEVEL: info
+      ND_SESSIONTIMEOUT: 24h
+      ND_BASEURL: ""
+      ND_ENABLESHARING: "true"
+    volumes:
+      - ./data:/data
+      - ./music:/music
+    networks:
+      - local
+
+  auth-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: auth
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+    volumes:
+      - ./auth-db-data:/var/lib/postgresql/data
+    networks:
+      - local
+
+  auth-panel:
+    build: ./auth-panel
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_NAME: auth
+      DB_USER: auth
+      DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      NAVIDROME_URL: http://navidrome:4533
+      NAVIDROME_ADMIN_USER: ${NAVIDROME_ADMIN_USER}
+      NAVIDROME_ADMIN_PASSWORD: ${NAVIDROME_ADMIN_PASSWORD}
+      ADMIN_PASSWORD_HASH: ${AUTH_ADMIN_PASSWORD_HASH}
+      MUSIC_DIR: /music
+    volumes:
+      - ./music:/music
+    networks:
+      - local
+    depends_on:
+      - auth-db
+      - navidrome
+
+  metube:
+    image: ghcr.io/alexta69/metube:latest
+    restart: unless-stopped
+    environment:
+      - UID=1000
+      - GID=1000
+    volumes:
+      - ./music:/downloads
+    networks:
+      - local
+
+networks:
+  local:
+    driver: bridge
