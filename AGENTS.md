@@ -2,8 +2,8 @@
 
 Self-hosted music server via Docker Compose.
 - **Navidrome** (deluan/navidrome) — Subsonic streaming server at `${NAVIDROME_DOMAIN}`
-- **MeTube** (ghcr.io/alexta69/metube) — yt-dlp web UI, доступен только через auth-panel
-- **Auth Panel** (Go) — регистрация по инвайтам + загрузка музыки + прокси к MeTube at `${AUTH_PANEL_DOMAIN}`
+- **MeTube** (ghcr.io/alexta69/metube) — yt-dlp web UI, доступен только через auth-panel (iframe)
+- **Auth Panel** (Go) — единая точка входа: регистрация по инвайтам + загрузка музыки + прокси к MeTube at `${AUTH_PANEL_DOMAIN}`
 - **Traefik** (v3) — reverse proxy + Let's Encrypt SSL (external, in `web` network)
 
 # Directories
@@ -32,26 +32,37 @@ Self-hosted music server via Docker Compose.
 
 # Auth Panel (Go)
 
+- **Единая точка входа** — `/login`, после входа сессия (http-only cookie `session`, 24h)
+- `/` → `/login` (если нет сессии) или `/upload` (если есть)
 - Регистрация только по инвайт-ссылкам: `/register?invite=<code>`
-- Админ-панель: `/admin` — создание инвайтов, защищена `ADMIN_PASSWORD_HASH` (bcrypt)
+- Пароли проверяются через Navidrome Auth API (`POST /auth/login`) — единый источник
+- Админ-панель: `/admin` — создание инвайтов (доступ только для `is_admin` в local DB)
 - Создание пользователей в Navidrome через Navidrome Admin API (`POST /api/user` с токеном из `/auth/login`)
-- Загрузка музыки: `/upload` — авторизация через учётные данные Navidrome (проверка через `/rest/ping`)
-- Сессии: после входа сервер ставит http-only cookie `session` (24h), запросы без пароля
-- MeTube прокси: `/metube/` — авторизация через cookie, WebSocket через gorilla/websocket
+- Загрузка музыки: `/upload` — авторизация через сессию
+- MeTube прокси: `/metube/` — через iframe с тулбаром, авторизация через сессию
 - Upload поддерживает отдельные аудиофайлы и zip-архивы (сохраняет структуру папок)
 - PostgreSQL только на internal network (не暴露 в Traefik)
-- Build: multi-stage Dockerfile (golang:1.22-alpine → alpine + unzip)
+- Build: multi-stage Dockerfile (golang:1.25-alpine → alpine + unzip)
 - Dev: `go run ./cmd/auth-panel` (нужны env vars)
-- Зависимости: `github.com/gorilla/websocket`, `github.com/lib/pq`, `golang.org/x/crypto`
+- Зависимости: `github.com/gorilla/websocket`, `github.com/lib/pq`
 - Утилита генерации хеша: `go run ./cmd/auth-panel/cmd/genhash <password>`
+
+# Local DB Schema (PostgreSQL)
+
+```sql
+CREATE TABLE invites (id UUID, code TEXT UNIQUE, used BOOLEAN, created_at TIMESTAMP);
+CREATE TABLE users (id UUID, username TEXT UNIQUE, name TEXT, is_admin BOOLEAN, created_at TIMESTAMP);
+```
 
 # Workflow
 
 - Ответы на русском, кратко
 - Пользователь в группе `docker` — без `sudo`
 - Создавать директории через `bash` перед `docker compose up`
-- Required env vars: `NAVIDROME_ADMIN_USER`, `NAVIDROME_ADMIN_PASSWORD`, `AUTH_ADMIN_PASSWORD_HASH`, `AUTH_DB_PASSWORD`
+- Required env vars: `NAVIDROME_ADMIN_USER`, `NAVIDROME_ADMIN_PASSWORD`, `AUTH_DB_PASSWORD`
 - Перед первым запуском: `cp .env.example .env` и заполнить своими значениями
+- При первом запуске: создать админа в Navidrome через `localhost:4533` (один раз)
+- `AUTH_ADMIN_PASSWORD_HASH` больше не нужен (админ-панель через сессию)
 
 # Decision Rules
 
@@ -59,3 +70,4 @@ Self-hosted music server via Docker Compose.
 - При наличии нескольких вариантов реализации — предложить выбор
 - Не предполагать предпочтения пользователя по UX, безопасности, фичам — спрашивать
 - Действовать без вопросов только для тривиальных фиксов (опечатки, очевидные баги, форматирование)
+- **Перед любым `git commit` или `git push` — обязательно согласовать с пользователем (показать изменения, сообщение коммита, цель пуша)**

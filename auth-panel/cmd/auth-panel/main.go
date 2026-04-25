@@ -22,8 +22,6 @@ import (
 	"auth-panel/internal/auth"
 	"auth-panel/internal/db"
 	"auth-panel/internal/upload"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 //go:embed web/*
@@ -33,31 +31,44 @@ var metubeProxy *httputil.ReverseProxy
 var metubeTarget *url.URL
 
 type sessionStore struct {
-	mu      sync.Mutex
-	sessions map[string]time.Time
+	mu       sync.Mutex
+	sessions map[string]sessionData
 }
 
-var sessions = &sessionStore{sessions: make(map[string]time.Time)}
+type sessionData struct {
+	username string
+	expires  time.Time
+}
 
-func (s *sessionStore) create() string {
+var sessions = &sessionStore{sessions: make(map[string]sessionData)}
+
+func (s *sessionStore) create(username string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b := make([]byte, 32)
 	rand.Read(b)
 	token := hex.EncodeToString(b)
-	s.sessions[token] = time.Now().Add(24 * time.Hour)
+	s.sessions[token] = sessionData{username: username, expires: time.Now().Add(24 * time.Hour)}
 	return token
 }
 
-func (s *sessionStore) valid(token string) bool {
+func (s *sessionStore) valid(token string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	exp, ok := s.sessions[token]
-	if !ok || time.Now().After(exp) {
+	data, ok := s.sessions[token]
+	if !ok || time.Now().After(data.expires) {
 		delete(s.sessions, token)
-		return false
+		return "", false
 	}
-	return true
+	return data.username, true
+}
+
+func (s *sessionStore) validFromCookie(r *http.Request) (string, bool) {
+	cookie, err := r.Cookie("session")
+	if err != nil {
+		return "", false
+	}
+	return s.valid(cookie.Value)
 }
 
 func (s *sessionStore) cleanup() {
@@ -65,7 +76,7 @@ func (s *sessionStore) cleanup() {
 	defer s.mu.Unlock()
 	now := time.Now()
 	for t, exp := range s.sessions {
-		if now.After(exp) {
+		if now.After(exp.expires) {
 			delete(s.sessions, t)
 		}
 	}
@@ -80,6 +91,16 @@ func main() {
 	}
 	defer database.Close()
 
+	adminUser := os.Getenv("NAVIDROME_ADMIN_USER")
+	if adminUser == "" {
+		adminUser = "admin"
+	}
+	adminPass := os.Getenv("NAVIDROME_ADMIN_PASSWORD")
+
+	if err := ensureAdmin(database, adminUser, adminPass); err != nil {
+		log.Printf("ensure admin: %v", err)
+	}
+
 	metubeURL := os.Getenv("METUBE_URL")
 	if metubeURL == "" {
 		metubeURL = "http://metube:8081"
@@ -87,7 +108,6 @@ func main() {
 	metubeTarget, _ = url.Parse(metubeURL)
 	metubeProxy = httputil.NewSingleHostReverseProxy(metubeTarget)
 	metubeProxy.ModifyResponse = func(r *http.Response) error {
-		// Fix cookies path
 		if r.Header.Get("Set-Cookie") != "" {
 			r.Header.Set("Set-Cookie", strings.ReplaceAll(r.Header.Get("Set-Cookie"), "Path=/", "Path=/metube/proxy/"))
 		}
@@ -97,6 +117,8 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", indexHandler)
+	mux.HandleFunc("GET /login", loginPageHandler)
+	mux.HandleFunc("POST /api/login", loginHandler(database))
 	mux.HandleFunc("GET /register", registerPageHandler)
 	mux.HandleFunc("POST /api/register", registerHandler(database))
 	mux.HandleFunc("GET /admin", adminPageHandler)
@@ -106,11 +128,13 @@ func main() {
 	mux.HandleFunc("POST /api/upload/auth", uploadAuthHandler)
 	mux.HandleFunc("POST /api/upload", uploadHandler)
 	mux.HandleFunc("POST /api/upload/zip", uploadZipHandler)
-	mux.HandleFunc("POST /api/metube/auth", metubeAuthHandler)
 	mux.HandleFunc("/metube/", metubeRouter)
 	mux.HandleFunc("GET /metube", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/metube/", http.StatusFound)
 	})
+	mux.HandleFunc("POST /api/logout", logoutHandler)
+	mux.HandleFunc("GET /api/session", sessionCheckHandler)
+	mux.HandleFunc("GET /api/me", sessionMeHandler(database))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -126,12 +150,133 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, mux))
 }
 
+func ensureAdmin(database *sql.DB, username, password string) error {
+	var exists bool
+	err := database.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND is_admin = TRUE)", username).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check admin exists: %w", err)
+	}
+	if exists {
+		return nil
+	}
+
+	_, err = database.Exec("INSERT INTO users (username, name, is_admin) VALUES ($1, $2, TRUE)",
+		username, "Admin")
+	if err != nil {
+		return fmt.Errorf("insert admin user in local DB: %w", err)
+	}
+
+	log.Printf("Local admin user %q created", username)
+	return nil
+}
+
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/register", http.StatusFound)
+	cookie, err := r.Cookie("session")
+	if err == nil {
+		if _, ok := sessions.valid(cookie.Value); ok {
+			http.Redirect(w, r, "/upload", http.StatusFound)
+			return
+		}
+	}
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+func loginPageHandler(w http.ResponseWriter, r *http.Request) {
+	renderTemplate(w, "login.html", nil)
+}
+
+func loginHandler(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		if req.Username == "" || req.Password == "" {
+			jsonError(w, "Заполните все поля", http.StatusBadRequest)
+			return
+		}
+
+		var exists bool
+		err := database.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)", req.Username).Scan(&exists)
+		if err != nil || !exists {
+			jsonError(w, "Неверные учётные данные", http.StatusUnauthorized)
+			return
+		}
+
+		if err := auth.CheckNavidromeCredentials(req.Username, req.Password); err != nil {
+			jsonError(w, "Неверные учётные данные", http.StatusUnauthorized)
+			return
+		}
+
+		token := sessions.create(req.Username)
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   86400,
+		})
+		jsonOK(w)
+	}
+}
+
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("session")
+	if err == nil {
+		sessions.mu.Lock()
+		delete(sessions.sessions, cookie.Value)
+		sessions.mu.Unlock()
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+	})
+	jsonOK(w)
+}
+
+func sessionCheckHandler(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("session")
+	if err == nil {
+		if username, ok := sessions.valid(cookie.Value); ok {
+			json.NewEncoder(w).Encode(map[string]string{"username": username})
+			return
+		}
+	}
+	jsonError(w, "Not authenticated", http.StatusUnauthorized)
+}
+
+func sessionMeHandler(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("session")
+		if err != nil {
+			jsonError(w, "Not authenticated", http.StatusUnauthorized)
+			return
+		}
+		username, ok := sessions.valid(cookie.Value)
+		if !ok {
+			jsonError(w, "Not authenticated", http.StatusUnauthorized)
+			return
+		}
+		var isAdmin bool
+		err = database.QueryRow("SELECT is_admin FROM users WHERE username = $1", username).Scan(&isAdmin)
+		if err != nil {
+			jsonError(w, "User not found", http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"username": username, "is_admin": isAdmin})
+	}
 }
 
 func registerPageHandler(w http.ResponseWriter, r *http.Request) {
@@ -170,21 +315,46 @@ func registerHandler(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		name := req.Name
+		if name == "" {
+			name = req.Username
+		}
+		_, err = database.Exec("INSERT INTO users (username, name) VALUES ($1, $2)",
+			req.Username, name)
+		if err != nil {
+			jsonError(w, "Пользователь уже существует", http.StatusConflict)
+			return
+		}
+
 		if _, err := database.Exec("UPDATE invites SET used = TRUE WHERE id = $1", inviteID); err != nil {
 			log.Printf("mark invite used: %v", err)
 		}
+
+		token := sessions.create(req.Username)
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   86400,
+		})
 
 		jsonOK(w)
 	}
 }
 
 func adminPageHandler(w http.ResponseWriter, r *http.Request) {
+	username := requireSession(w, r)
+	if username == "" {
+		return
+	}
 	renderTemplate(w, "admin.html", nil)
 }
 
 func adminInvitesHandler(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !requireAdmin(w, r) {
+		if !requireAdminSession(w, r, database) {
 			return
 		}
 
@@ -218,7 +388,7 @@ func adminInvitesHandler(database *sql.DB) http.HandlerFunc {
 
 func adminCreateInviteHandler(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !requireAdmin(w, r) {
+		if !requireAdminSession(w, r, database) {
 			return
 		}
 
@@ -232,24 +402,35 @@ func adminCreateInviteHandler(database *sql.DB) http.HandlerFunc {
 	}
 }
 
-func requireAdmin(w http.ResponseWriter, r *http.Request) bool {
-	adminHash := os.Getenv("ADMIN_PASSWORD_HASH")
-	if adminHash == "" {
-		jsonError(w, "Admin not configured", http.StatusUnauthorized)
+func requireSession(w http.ResponseWriter, r *http.Request) string {
+	cookie, err := r.Cookie("session")
+	if err == nil {
+		if username, ok := sessions.valid(cookie.Value); ok {
+			return username
+		}
+	}
+	http.Redirect(w, r, "/login", http.StatusFound)
+	return ""
+}
+
+func requireAdminSession(w http.ResponseWriter, r *http.Request, database *sql.DB) bool {
+	cookie, err := r.Cookie("session")
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return false
+	}
+	username, ok := sessions.valid(cookie.Value)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
 		return false
 	}
 
-	password := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if password == "" {
-		jsonError(w, "Unauthorized", http.StatusUnauthorized)
+	var isAdmin bool
+	err = database.QueryRow("SELECT is_admin FROM users WHERE username = $1", username).Scan(&isAdmin)
+	if err != nil || !isAdmin {
+		jsonError(w, "Доступ запрещён", http.StatusForbidden)
 		return false
 	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(adminHash), []byte(password)); err != nil {
-		jsonError(w, "Invalid password", http.StatusUnauthorized)
-		return false
-	}
-
 	return true
 }
 
@@ -274,7 +455,7 @@ func uploadAuthHandler(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "Неверные учётные данные", http.StatusUnauthorized)
 		return
 	}
-	token := sessions.create()
+	token := sessions.create(req.Username)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session",
 		Value:    token,
@@ -342,12 +523,12 @@ func uploadZipHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func requireNavidromeAuth(w http.ResponseWriter, r *http.Request) bool {
-	// Check session cookie first
 	cookie, err := r.Cookie("session")
-	if err == nil && sessions.valid(cookie.Value) {
-		return true
+	if err == nil {
+		if _, ok := sessions.valid(cookie.Value); ok {
+			return true
+		}
 	}
-	// Fall back to header-based auth
 	username := r.Header.Get("X-Navidrome-User")
 	password := r.Header.Get("X-Navidrome-Pass")
 
@@ -364,64 +545,29 @@ func requireNavidromeAuth(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func metubeAuthHandler(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
+func metubePageHandler(w http.ResponseWriter, r *http.Request) {
+	_, ok := sessions.validFromCookie(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
-	if err := auth.CheckNavidromeCredentials(req.Username, req.Password); err != nil {
-		jsonError(w, "Неверные учётные данные", http.StatusUnauthorized)
-		return
-	}
-	// Set cookie with credentials
-	cookieVal := req.Username + ":" + req.Password
-	http.SetCookie(w, &http.Cookie{
-		Name:     "metube_auth",
-		Value:    cookieVal,
-		Path:     "/metube/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-	jsonOK(w)
-}
-
-func metubeLoginPageHandler(w http.ResponseWriter, r *http.Request) {
-	renderTemplate(w, "metube-login.html", nil)
-}
-
-func metubeViewHandler(w http.ResponseWriter, r *http.Request) {
-	renderTemplate(w, "metube-view.html", nil)
+	renderTemplate(w, "metube.html", nil)
 }
 
 func metubeRouter(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	if path == "/metube" || path == "/metube/" || path == "/metube/login" {
-		metubeLoginPageHandler(w, r)
+		metubePageHandler(w, r)
 		return
 	}
 	if path == "/metube/view" {
-		metubeViewHandler(w, r)
+		metubePageHandler(w, r)
 		return
 	}
 	if strings.HasPrefix(path, "/metube/proxy/") || strings.HasPrefix(path, "/metube/proxy") {
-		// Get credentials from cookie
-		cookie, err := r.Cookie("metube_auth")
-		if err != nil || cookie.Value == "" {
+		_, ok := sessions.validFromCookie(r)
+		if !ok {
 			jsonError(w, "Требуется авторизация", http.StatusUnauthorized)
-			return
-		}
-		parts := strings.SplitN(cookie.Value, ":", 2)
-		if len(parts) != 2 {
-			jsonError(w, "Требуется авторизация", http.StatusUnauthorized)
-			return
-		}
-		username, password := parts[0], parts[1]
-		if err := auth.CheckNavidromeCredentials(username, password); err != nil {
-			jsonError(w, "Неверные учётные данные", http.StatusUnauthorized)
 			return
 		}
 
@@ -429,13 +575,11 @@ func metubeRouter(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "" {
 			r.URL.Path = "/"
 		}
-		// Only remove auth params, keep everything else (e.g. Socket.IO params)
 		q := r.URL.Query()
 		q.Del("u")
 		q.Del("p")
 		r.URL.RawQuery = q.Encode()
 
-		// WebSocket upgrade
 		if strings.ToLower(r.Header.Get("Upgrade")) == "websocket" {
 			proxyWebSocket(w, r)
 			return
@@ -482,7 +626,6 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request) {
 	target.Path = r.URL.Path
 	target.RawQuery = r.URL.RawQuery
 
-	// Dial backend WebSocket
 	connBackend, _, err := websocket.DefaultDialer.Dial(target.String(), nil)
 	if err != nil {
 		log.Printf("WebSocket dial error: %v", err)
@@ -491,7 +634,6 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer connBackend.Close()
 
-	// Upgrade client connection
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -504,7 +646,6 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer connClient.Close()
 
-	// Bidirectional relay
 	errCh := make(chan error, 2)
 	go relayWsMessages(connClient, connBackend, errCh)
 	go relayWsMessages(connBackend, connClient, errCh)

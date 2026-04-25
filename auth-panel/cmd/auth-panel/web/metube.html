@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeTube — Music Server</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f9fafb; }
+    .toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+    .toolbar a { color: #2563eb; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 6px; }
+    .toolbar a:hover { background: #eff6ff; }
+    .toolbar .logout { color: #dc2626; margin-left: auto; }
+    .toolbar .logout:hover { background: #fef2f2; }
+    iframe { flex: 1; border: none; width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="/upload">← Назад</a>
+    <a href="/admin" id="adminLink" style="display:none">Админ</a>
+    <a href="http://localhost:4533" target="_blank">Музыкальный сервер</a>
+    <a href="#" class="logout" onclick="doLogout(); return false;">Выйти</a>
+  </div>
+  <iframe src="/metube/proxy/"></iframe>
+  <script>
+    async function doLogout() {
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
+    }
+    async function checkAdmin() {
+      try {
+        const r = await fetch('/api/me');
+        if (r.ok) {
+          const j = await r.json();
+          if (j.is_admin) {
+            document.getElementById('adminLink').style.display = 'inline';
+          }
+        }
+      } catch (e) {}
+    }
+    checkAdmin();
+  </script>
+</body>
+</html>

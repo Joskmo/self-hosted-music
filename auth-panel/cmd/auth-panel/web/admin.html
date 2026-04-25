@@ -7,7 +7,6 @@
   <style>
     body { font-family: system-ui, sans-serif; max-width: 700px; margin: 60px auto; padding: 0 20px; background: #f9fafb; }
     h2 { color: #111827; }
-    input { padding: 10px; margin: 6px 0 16px; border: 1px solid #d1d5db; border-radius: 6px; }
     button { padding: 10px 20px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; }
     button:hover { background: #1d4ed8; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; border-radius: 8px; overflow: hidden; }
@@ -16,40 +15,37 @@
     .link { word-break: break-all; color: #2563eb; font-size: 13px; }
     .error { color: #dc2626; background: #fef2f2; padding: 10px; border-radius: 6px; }
     .success { color: #16a34a; background: #f0fdf4; padding: 10px; border-radius: 6px; }
-    #login { max-width: 300px; }
     .links { margin-top: 24px; font-size: 14px; }
     .links a { color: #2563eb; text-decoration: none; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .header a { color: #dc2626; text-decoration: none; font-size: 14px; }
   </style>
 </head>
 <body>
+  <div class="header">
+    <span></span>
+    <a href="#" onclick="doLogout(); return false;">Выйти</a>
+  </div>
   <h2>Админ-панель</h2>
-  <div id="login">
-    <label>Пароль админа</label><br>
-    <input type="password" id="adminPass" placeholder="Пароль" style="width:100%">
-    <button onclick="doLogin()" style="width:100%">Войти</button>
-  </div>
-  <div id="panel" style="display:none">
-    <button onclick="createInvite()">Создать ссылку</button>
-    <div id="msg" style="margin-top:12px"></div>
-    <table><thead><tr><th>Ссылка</th><th>Статус</th><th>Создана</th></tr></thead><tbody id="invites"></tbody></table>
-  </div>
+  <button onclick="createInvite()">Создать ссылку</button>
+  <div id="msg" style="margin-top:12px"></div>
+  <table><thead><tr><th>Ссылка</th><th>Статус</th><th>Создана</th></tr></thead><tbody id="invites"></tbody></table>
   <div class="links">
-    <a href="/register">Регистрация</a> &middot;
-    <a href="/upload">Загрузить музыку</a>
+    <a href="/upload">Загрузка музыки</a> &middot;
+    <a href="/metube">Скачать с YouTube</a> &middot;
+    <a href="http://localhost:4533" target="_blank">Музыкальный сервер</a>
   </div>
   <script>
-    let token;
-    async function doLogin() {
-      const pass = document.getElementById('adminPass').value;
-      const r = await fetch('/api/admin/invites', { headers: { 'Authorization': 'Bearer ' + pass } });
-      if (!r.ok) return alert('Неверный пароль');
-      token = pass;
-      document.getElementById('login').style.display = 'none';
-      document.getElementById('panel').style.display = 'block';
-      loadInvites();
+    async function doLogout() {
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
     }
     async function loadInvites() {
-      const r = await fetch('/api/admin/invites', { headers: { 'Authorization': 'Bearer ' + token } });
+      const r = await fetch('/api/admin/invites');
+      if (!r.ok) {
+        window.location.href = '/login';
+        return;
+      }
       const items = await r.json();
       const baseUrl = location.origin + '/register?invite=';
       document.getElementById('invites').innerHTML = items.map(i =>
@@ -59,10 +55,7 @@
     async function createInvite() {
       const msg = document.getElementById('msg');
       try {
-        const r = await fetch('/api/admin/invites', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token },
-        });
+        const r = await fetch('/api/admin/invites', { method: 'POST' });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error);
         msg.className = 'success';
@@ -73,6 +66,7 @@
         msg.textContent = e.message;
       }
     }
+    loadInvites();
   </script>
 </body>
 </html>

@@ -21,9 +21,16 @@
     .links { margin-top: 24px; font-size: 14px; }
     .links a { color: #2563eb; text-decoration: none; }
     #fileList { margin: 12px 0; font-size: 14px; color: #374151; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .header span { color: #6b7280; font-size: 14px; }
+    .header a { color: #dc2626; text-decoration: none; font-size: 14px; }
   </style>
 </head>
 <body>
+  <div class="header">
+    <span id="userInfo"></span>
+    <a href="#" onclick="doLogout(); return false;">Выйти</a>
+  </div>
   <h2>Загрузка музыки</h2>
   <div id="loginSection">
     <label>Логин</label>
@@ -55,11 +62,29 @@
     </div>
   </div>
   <div class="links">
-    <a href="/register">Регистрация</a> &middot;
-    <a href="/admin">Админ-панель</a> &middot;
-    <a href="/metube">Скачать с YouTube</a>
+    <a href="/admin" id="adminLink" style="display:none">Админ-панель</a><span id="adminSep" style="display:none"> &middot; </span>
+    <a href="/metube">Скачать с YouTube</a> &middot;
+    <a href="http://localhost:4533" target="_blank">Музыкальный сервер</a>
   </div>
   <script>
+    async function checkSession() {
+      try {
+        const r = await fetch('/api/me');
+        if (r.ok) {
+          const j = await r.json();
+          document.getElementById('userInfo').textContent = j.username;
+          document.getElementById('loginSection').style.display = 'none';
+          document.getElementById('uploadSection').style.display = 'block';
+          if (j.is_admin) {
+            document.getElementById('adminLink').style.display = 'inline';
+            document.getElementById('adminSep').style.display = 'inline';
+          }
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
     async function doLogin() {
       const user = document.getElementById('username').value;
       const pass = document.getElementById('password').value;
@@ -73,6 +98,7 @@
         });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error);
+        document.getElementById('userInfo').textContent = user;
         document.getElementById('loginSection').style.display = 'none';
         document.getElementById('uploadSection').style.display = 'block';
       } catch (err) {
@@ -80,6 +106,12 @@
         msg.textContent = err.message;
       }
     }
+
+    async function doLogout() {
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
+    }
+
     function switchTab(tab) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.getElementById('filesTab').style.display = tab === 'files' ? 'block' : 'none';
@@ -139,6 +171,8 @@
         msg.textContent = e.message;
       }
     }
+
+    checkSession();
   </script>
 </body>
 </html>

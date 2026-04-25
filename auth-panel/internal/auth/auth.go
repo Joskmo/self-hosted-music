@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 )
 
@@ -24,29 +23,35 @@ func CheckNavidromeCredentials(username, password string) error {
 		navURL = "http://navidrome:4533"
 	}
 
-	reqURL := fmt.Sprintf("%s/rest/ping?u=%s&p=%s&v=1.16.0&c=auth-panel&f=json",
-		navURL,
-		url.QueryEscape(username),
-		url.QueryEscape(password),
-	)
+	body := map[string]string{
+		"username": username,
+		"password": password,
+	}
+	data, _ := json.Marshal(body)
 
-	resp, err := http.Get(reqURL)
+	req, err := http.NewRequest("POST", navURL+"/auth/login", bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("navidrome request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		SubsonicResponse struct {
-			Status string `json:"status"`
-		} `json:"subsonic-response"`
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("invalid credentials")
 	}
 
+	var result struct {
+		Token string `json:"token"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("decode response: %w", err)
 	}
-
-	if result.SubsonicResponse.Status != "ok" {
+	if result.Token == "" {
 		return fmt.Errorf("invalid credentials")
 	}
 
@@ -92,10 +97,6 @@ func CreateNavidromeUser(username, password, name string) error {
 	}
 	if loginResult.Token == "" && loginResult.ID == "" {
 		return fmt.Errorf("no token in login response: status %d", loginResp.StatusCode)
-	}
-	authToken := loginResult.Token
-	if authToken == "" {
-		authToken = loginResult.ID
 	}
 
 	body := map[string]any{

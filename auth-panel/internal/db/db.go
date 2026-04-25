@@ -35,8 +35,15 @@ func New(ctx context.Context) (*sql.DB, error) {
 			used BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT NOW()
 		);
+		CREATE TABLE IF NOT EXISTS users (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			username TEXT UNIQUE NOT NULL,
+			name TEXT,
+			is_admin BOOLEAN DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT NOW()
+		);
 	`); err != nil {
-		return nil, fmt.Errorf("create invites table: %w", err)
+		return nil, fmt.Errorf("create tables: %w", err)
 	}
 
 	return db, nil
