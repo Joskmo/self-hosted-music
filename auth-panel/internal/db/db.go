@@ -28,22 +28,27 @@ func New(ctx context.Context) (*sql.DB, error) {
 		return nil, err
 	}
 
-	if _, err := db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS invites (
+	migrations := []string{
+		`CREATE TABLE IF NOT EXISTS invites (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			code TEXT UNIQUE NOT NULL,
 			used BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT NOW()
-		);
-		CREATE TABLE IF NOT EXISTS users (
+		);`,
+		`CREATE TABLE IF NOT EXISTS users (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			username TEXT UNIQUE NOT NULL,
 			name TEXT,
 			is_admin BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT NOW()
-		);
-	`); err != nil {
-		return nil, fmt.Errorf("create tables: %w", err)
+		);`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS navidrome_id TEXT;`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_navidrome_id ON users(navidrome_id);`,
+	}
+	for _, q := range migrations {
+		if _, err := db.ExecContext(ctx, q); err != nil {
+			return nil, fmt.Errorf("migration failed: %w", err)
+		}
 	}
 
 	return db, nil

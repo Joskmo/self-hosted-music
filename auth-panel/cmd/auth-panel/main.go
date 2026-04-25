@@ -18,10 +18,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"auth-panel/internal/auth"
 	"auth-panel/internal/db"
 	"auth-panel/internal/upload"
+
+	"github.com/gorilla/websocket"
 )
 
 //go:embed web/*
@@ -124,6 +125,9 @@ func main() {
 	mux.HandleFunc("GET /admin", adminPageHandler)
 	mux.HandleFunc("GET /api/admin/invites", adminInvitesHandler(database))
 	mux.HandleFunc("POST /api/admin/invites", adminCreateInviteHandler(database))
+	mux.HandleFunc("GET /api/admin/users", adminUsersHandler(database))
+	mux.HandleFunc("PUT /api/admin/users/{id}/role", adminUpdateRoleHandler(database))
+	mux.HandleFunc("DELETE /api/admin/users/{id}", adminDeleteUserHandler(database))
 	mux.HandleFunc("GET /upload", uploadPageHandler)
 	mux.HandleFunc("POST /api/upload/auth", uploadAuthHandler)
 	mux.HandleFunc("POST /api/upload", uploadHandler)
@@ -310,7 +314,8 @@ func registerHandler(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := auth.CreateNavidromeUser(req.Username, req.Password, req.Name); err != nil {
+		navID, err := auth.CreateNavidromeUser(req.Username, req.Password, req.Name)
+		if err != nil {
 			jsonError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -319,8 +324,8 @@ func registerHandler(database *sql.DB) http.HandlerFunc {
 		if name == "" {
 			name = req.Username
 		}
-		_, err = database.Exec("INSERT INTO users (username, name) VALUES ($1, $2)",
-			req.Username, name)
+		_, err = database.Exec("INSERT INTO users (username, name, navidrome_id) VALUES ($1, $2, $3)",
+			req.Username, name, navID)
 		if err != nil {
 			jsonError(w, "Пользователь уже существует", http.StatusConflict)
 			return
@@ -399,6 +404,221 @@ func adminCreateInviteHandler(database *sql.DB) http.HandlerFunc {
 		}
 
 		json.NewEncoder(w).Encode(map[string]string{"code": code})
+	}
+}
+
+func adminUsersHandler(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !requireAdminSession(w, r, database) {
+			return
+		}
+
+		token, err := auth.GetNavidromeAdminToken()
+		if err != nil {
+			jsonError(w, "Navidrome admin auth failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		users, err := auth.GetNavidromeUsers(token)
+		if err != nil {
+			jsonError(w, "Failed to fetch Navidrome users: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		for _, u := range users {
+			_, err := database.Exec(
+				`INSERT INTO users (username, name, is_admin, navidrome_id)
+				 VALUES ($1, $2, $3, $4)
+				 ON CONFLICT (username) DO UPDATE
+				 SET name = EXCLUDED.name, is_admin = EXCLUDED.is_admin, navidrome_id = EXCLUDED.navidrome_id`,
+				u.UserName, u.Name, u.IsAdmin, u.ID,
+			)
+			if err != nil {
+				log.Printf("sync user %s: %v", u.UserName, err)
+			}
+		}
+
+		rows, err := database.Query("SELECT id, username, name, is_admin, navidrome_id, created_at FROM users ORDER BY created_at DESC")
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		mainAdmin := os.Getenv("NAVIDROME_ADMIN_USER")
+		if mainAdmin == "" {
+			mainAdmin = "admin"
+		}
+
+		var result []map[string]any
+		for rows.Next() {
+			var id, username, name, navID, createdAt string
+			var isAdmin bool
+			rows.Scan(&id, &username, &name, &isAdmin, &navID, &createdAt)
+			result = append(result, map[string]any{
+				"id":            id,
+				"username":      username,
+				"name":          name,
+				"is_admin":      isAdmin,
+				"is_main_admin": username == mainAdmin,
+				"navidrome_id":  navID,
+				"created_at":    createdAt,
+			})
+		}
+		if result == nil {
+			result = []map[string]any{}
+		}
+		json.NewEncoder(w).Encode(result)
+	}
+}
+
+func adminUpdateRoleHandler(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !requireAdminSession(w, r, database) {
+			return
+		}
+
+		adminUser, _, _ := r.BasicAuth()
+		_ = adminUser
+		// current admin username from session
+		cookie, _ := r.Cookie("session")
+		currentAdmin, _ := sessions.valid(cookie.Value)
+
+		userID := r.PathValue("id")
+		var req struct {
+			IsAdmin bool `json:"is_admin"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		var targetUsername string
+		err := database.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&targetUsername)
+		if err != nil {
+			jsonError(w, "User not found", http.StatusNotFound)
+			return
+		}
+
+		mainAdmin := os.Getenv("NAVIDROME_ADMIN_USER")
+		if mainAdmin == "" {
+			mainAdmin = "admin"
+		}
+
+		if targetUsername == mainAdmin {
+			jsonError(w, "Нельзя изменить роль главного администратора", http.StatusForbidden)
+			return
+		}
+		if targetUsername == currentAdmin {
+			jsonError(w, "Нельзя изменить свою роль", http.StatusForbidden)
+			return
+		}
+
+		// prevent removing last admin
+		if !req.IsAdmin {
+			var adminCount int
+			if err := database.QueryRow("SELECT COUNT(*) FROM users WHERE is_admin = TRUE").Scan(&adminCount); err == nil && adminCount <= 1 {
+				var targetIsAdmin bool
+				database.QueryRow("SELECT is_admin FROM users WHERE id = $1", userID).Scan(&targetIsAdmin)
+				if targetIsAdmin {
+					jsonError(w, "Нельзя снять роль с последнего администратора", http.StatusForbidden)
+					return
+				}
+			}
+		}
+
+		var navID string
+		if err := database.QueryRow("SELECT navidrome_id FROM users WHERE id = $1", userID).Scan(&navID); err != nil || navID == "" {
+			jsonError(w, "Пользователь не синхронизирован с Navidrome", http.StatusInternalServerError)
+			return
+		}
+
+		token, err := auth.GetNavidromeAdminToken()
+		if err != nil {
+			jsonError(w, "Navidrome admin auth failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := auth.UpdateNavidromeUser(token, navID, req.IsAdmin); err != nil {
+			jsonError(w, "Navidrome update failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if _, err := database.Exec("UPDATE users SET is_admin = $1 WHERE id = $2", req.IsAdmin, userID); err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		jsonOK(w)
+	}
+}
+
+func adminDeleteUserHandler(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !requireAdminSession(w, r, database) {
+			return
+		}
+
+		cookie, _ := r.Cookie("session")
+		currentAdmin, _ := sessions.valid(cookie.Value)
+
+		userID := r.PathValue("id")
+
+		var targetUsername string
+		err := database.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&targetUsername)
+		if err != nil {
+			jsonError(w, "User not found", http.StatusNotFound)
+			return
+		}
+
+		mainAdmin := os.Getenv("NAVIDROME_ADMIN_USER")
+		if mainAdmin == "" {
+			mainAdmin = "admin"
+		}
+
+		if targetUsername == mainAdmin {
+			jsonError(w, "Нельзя удалить главного администратора", http.StatusForbidden)
+			return
+		}
+		if targetUsername == currentAdmin {
+			jsonError(w, "Нельзя удалить самого себя", http.StatusForbidden)
+			return
+		}
+
+		// prevent deleting last admin
+		var adminCount int
+		if err := database.QueryRow("SELECT COUNT(*) FROM users WHERE is_admin = TRUE").Scan(&adminCount); err == nil && adminCount <= 1 {
+			var targetIsAdmin bool
+			database.QueryRow("SELECT is_admin FROM users WHERE id = $1", userID).Scan(&targetIsAdmin)
+			if targetIsAdmin {
+				jsonError(w, "Нельзя удалить последнего администратора", http.StatusForbidden)
+				return
+			}
+		}
+
+		var navID string
+		if err := database.QueryRow("SELECT navidrome_id FROM users WHERE id = $1", userID).Scan(&navID); err != nil || navID == "" {
+			jsonError(w, "Пользователь не синхронизирован с Navidrome", http.StatusInternalServerError)
+			return
+		}
+
+		token, err := auth.GetNavidromeAdminToken()
+		if err != nil {
+			jsonError(w, "Navidrome admin auth failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := auth.DeleteNavidromeUser(token, navID); err != nil {
+			jsonError(w, "Navidrome delete failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if _, err := database.Exec("DELETE FROM users WHERE id = $1", userID); err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		jsonOK(w)
 	}
 }
 
@@ -618,6 +838,7 @@ func renderTemplate(w http.ResponseWriter, name string, data map[string]any) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.Write([]byte(html))
 }
 
@@ -637,7 +858,7 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool { return true },
+		CheckOrigin:     func(r *http.Request) bool { return true },
 	}
 	connClient, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {

@@ -5,11 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Админ — Music Server</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 700px; margin: 60px auto; padding: 0 20px; background: #f9fafb; }
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 60px auto; padding: 0 20px; background: #f9fafb; }
     h2 { color: #111827; }
     button { padding: 10px 20px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; }
     button:hover { background: #1d4ed8; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; border-radius: 8px; overflow: hidden; }
+    button.secondary { background: #6b7280; }
+    button.secondary:hover { background: #4b5563; }
+    button.danger { background: #dc2626; }
+    button.danger:hover { background: #b91c1c; }
+    button.small { padding: 6px 12px; font-size: 13px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; background: #fff; border-radius: 8px; overflow: hidden; }
     th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e5e7eb; }
     th { background: #f3f4f6; }
     .link { word-break: break-all; color: #2563eb; font-size: 13px; }
@@ -19,54 +25,137 @@
     .links a { color: #2563eb; text-decoration: none; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .header a { color: #dc2626; text-decoration: none; font-size: 14px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #e5e7eb; color: #374151; }
+    .badge.admin { background: #dbeafe; color: #1e40af; }
+    section { margin-bottom: 40px; }
   </style>
 </head>
 <body>
   <div class="header">
-    <span></span>
+    <span id="who"></span>
     <a href="#" onclick="doLogout(); return false;">Выйти</a>
   </div>
-  <h2>Админ-панель</h2>
-  <button onclick="createInvite()">Создать ссылку</button>
-  <div id="msg" style="margin-top:12px"></div>
-  <table><thead><tr><th>Ссылка</th><th>Статус</th><th>Создана</th></tr></thead><tbody id="invites"></tbody></table>
+
+  <section>
+    <h2>Инвайты</h2>
+    <button onclick="createInvite()">Создать ссылку</button>
+    <div id="msgInvite" style="margin-top:12px"></div>
+    <table><thead><tr><th>Ссылка</th><th>Статус</th><th>Создана</th></tr></thead><tbody id="invites"></tbody></table>
+  </section>
+
+  <section>
+    <h2>Пользователи</h2>
+    <div id="msgUser" style="margin-bottom:12px"></div>
+    <table>
+      <thead>
+        <tr><th>Имя</th><th>Логин</th><th>Роль</th><th>Действия</th></tr>
+      </thead>
+      <tbody id="users"></tbody>
+    </table>
+  </section>
+
   <div class="links">
     <a href="/upload">Загрузка музыки</a> &middot;
     <a href="/metube">Скачать с YouTube</a> &middot;
     <a href="http://localhost:4533" target="_blank">Музыкальный сервер</a>
   </div>
+
   <script>
+    let currentUser = '';
+
     async function doLogout() {
       await fetch('/api/logout', { method: 'POST' });
       window.location.href = '/login';
     }
+
+    async function loadMe() {
+      try {
+        const r = await fetch('/api/me');
+        if (r.ok) {
+          const j = await r.json();
+          currentUser = j.username || '';
+          document.getElementById('who').textContent = currentUser;
+        }
+      } catch (e) {}
+    }
+
     async function loadInvites() {
       const r = await fetch('/api/admin/invites');
-      if (!r.ok) {
-        window.location.href = '/login';
-        return;
-      }
+      if (!r.ok) { window.location.href = '/login'; return; }
       const items = await r.json();
       const baseUrl = location.origin + '/register?invite=';
       document.getElementById('invites').innerHTML = items.map(i =>
         '<tr><td class="link">' + baseUrl + i.code + '</td><td>' + (i.used ? 'Использована' : 'Активна') + '</td><td>' + new Date(i.created_at).toLocaleDateString('ru') + '</td></tr>'
       ).join('');
     }
+
     async function createInvite() {
-      const msg = document.getElementById('msg');
+      const msg = document.getElementById('msgInvite');
       try {
         const r = await fetch('/api/admin/invites', { method: 'POST' });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error);
-        msg.className = 'success';
-        msg.textContent = 'Ссылка создана';
+        msg.className = 'success'; msg.textContent = 'Ссылка создана';
         loadInvites();
       } catch (e) {
-        msg.className = 'error';
-        msg.textContent = e.message;
+        msg.className = 'error'; msg.textContent = e.message;
       }
     }
-    loadInvites();
+
+    async function loadUsers() {
+      const r = await fetch('/api/admin/users');
+      if (!r.ok) { window.location.href = '/login'; return; }
+      const items = await r.json();
+      const tbody = document.getElementById('users');
+      tbody.innerHTML = items.map(u => {
+        const isMain = u.is_main_admin;
+        const isSelf = u.username === currentUser;
+        const roleBadge = u.is_admin ? '<span class="badge admin">Админ</span>' : '<span class="badge">Пользователь</span>';
+        let actions = '';
+        if (!isMain && !isSelf) {
+          const roleBtn = u.is_admin
+            ? '<button class="small secondary" onclick="toggleRole(\'' + u.id + '\', false)">Разжаловать</button>'
+            : '<button class="small" onclick="toggleRole(\'' + u.id + '\', true)">Сделать админом</button>';
+          actions = roleBtn + ' <button class="small danger" onclick="deleteUser(\'' + u.id + '\')">Удалить</button>';
+        } else {
+          actions = '<span style="color:#9ca3af;font-size:13px">' + (isMain ? 'Главный админ' : 'Вы') + '</span>';
+        }
+        return '<tr><td>' + (u.name || u.username) + '</td><td>' + u.username + '</td><td>' + roleBadge + '</td><td>' + actions + '</td></tr>';
+      }).join('');
+    }
+
+    async function toggleRole(id, makeAdmin) {
+      const msg = document.getElementById('msgUser');
+      try {
+        const r = await fetch('/api/admin/users/' + id + '/role', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_admin: makeAdmin }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        msg.className = 'success'; msg.textContent = 'Роль обновлена';
+        loadUsers();
+      } catch (e) {
+        msg.className = 'error'; msg.textContent = e.message;
+      }
+    }
+
+    async function deleteUser(id) {
+      if (!confirm('Удалить пользователя? Это действие нельзя отменить.')) return;
+      const msg = document.getElementById('msgUser');
+      try {
+        const r = await fetch('/api/admin/users/' + id, { method: 'DELETE' });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        msg.className = 'success'; msg.textContent = 'Пользователь удалён';
+        loadUsers();
+      } catch (e) {
+        msg.className = 'error'; msg.textContent = e.message;
+      }
+    }
+
+    loadMe().then(() => { loadInvites(); loadUsers(); });
   </script>
 </body>
 </html>
