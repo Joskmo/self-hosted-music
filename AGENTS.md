@@ -45,7 +45,6 @@ Self-hosted music server via Docker Compose.
 - Build: multi-stage Dockerfile (golang:1.25-alpine → alpine + unzip)
 - Dev: `go run ./cmd/auth-panel` (нужны env vars)
 - Зависимости: `github.com/gorilla/websocket`, `github.com/lib/pq`
-- Утилита генерации хеша: `go run ./cmd/auth-panel/cmd/genhash <password>`
 
 # Local DB Schema (PostgreSQL)
 
@@ -62,7 +61,6 @@ CREATE TABLE users (id UUID, username TEXT UNIQUE, name TEXT, is_admin BOOLEAN, 
 - Required env vars: `NAVIDROME_ADMIN_USER`, `NAVIDROME_ADMIN_PASSWORD`, `AUTH_DB_PASSWORD`
 - Перед первым запуском: `cp .env.example .env` и заполнить своими значениями
 - При первом запуске: создать админа в Navidrome через `localhost:4533` (один раз)
-- `AUTH_ADMIN_PASSWORD_HASH` больше не нужен (админ-панель через сессию)
 
 # Decision Rules
 

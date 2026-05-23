@@ -1,4 +1,4 @@
-.PHONY: up down build logs clean hash prod-up prod-down restart
+.PHONY: up down build logs clean prod-up prod-down restart
 
 # Локальный запуск
 up:
@@ -28,11 +28,6 @@ prod-up:
 # Production остановка
 prod-down:
 	docker compose down
-
-# Генерация bcrypt-хеша
-hash:
-	@read -p "Password: " pass; \
-	go run ./auth-panel/cmd/genhash "$$pass"
 
 # Очистка данных (WARNING: удалит БД и файлы)
 clean:

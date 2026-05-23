@@ -30,7 +30,7 @@ make up
 # Открыть http://localhost:4533 и пройти initial setup
 
 # 4. Создать инвайт-ссылку
-# Открыть http://localhost:3000/admin, пароль из AUTH_ADMIN_PASSWORD_HASH
+# Открыть http://localhost:3000/admin (войти через учётную запись Navidrome-админа)
 ```
 
 ## Production
@@ -50,7 +50,6 @@ make prod-up
 | `make down` | Остановка локально |
 | `make build` | Пересборка auth-panel |
 | `make logs` | Просмотр логов |
-| `make hash` | Генерация bcrypt-хеша |
 | `make clean` | Удаление всех данных |
 
 ## Структура
