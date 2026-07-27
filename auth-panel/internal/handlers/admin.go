@@ -14,7 +14,7 @@ func AdminPageHandler(w http.ResponseWriter, r *http.Request, sessions *session.
 	if RequireSession(w, r, sessions) == "" {
 		return
 	}
-	RenderTemplate(w, "admin.html", nil)
+	RenderTemplate(w, "admin.html", map[string]any{"NavidromeURL": PublicNavidromeURL()})
 }
 
 func AdminInvitesHandler(database *sql.DB, sessions *session.Store) http.HandlerFunc {

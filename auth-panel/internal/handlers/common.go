@@ -49,6 +49,13 @@ func RenderTemplate(w http.ResponseWriter, name string, data map[string]any) {
 	w.Write([]byte(html))
 }
 
+func PublicNavidromeURL() string {
+	if u := os.Getenv("NAVIDROME_PUBLIC_URL"); u != "" {
+		return u
+	}
+	return "http://localhost:4533"
+}
+
 func RequireSession(w http.ResponseWriter, r *http.Request, sessions *session.Store) string {
 	cookie, err := r.Cookie("session")
 	if err == nil {

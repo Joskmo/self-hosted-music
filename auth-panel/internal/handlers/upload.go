@@ -10,7 +10,7 @@ import (
 )
 
 func UploadPageHandler(w http.ResponseWriter, r *http.Request) {
-	RenderTemplate(w, "upload.html", nil)
+	RenderTemplate(w, "upload.html", map[string]any{"NavidromeURL": PublicNavidromeURL()})
 }
 
 func UploadHandler(sessions *session.Store) http.HandlerFunc {
