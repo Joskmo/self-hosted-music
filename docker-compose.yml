@@ -35,6 +35,7 @@ services:
       - |
         until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do sleep 2; done
         mc mb --ignore-existing local/music
+        mc version enable local/music
         cat >/tmp/music-readwrite.json <<'EOF'
         {
           "Version": "2012-10-17",
@@ -52,6 +53,27 @@ services:
         mc admin policy create local music-readwrite /tmp/music-readwrite.json || true
         mc admin user add local "$$MINIO_MUSIC_USER" "$$MINIO_MUSIC_PASSWORD" || true
         mc admin policy attach local music-readwrite --user "$$MINIO_MUSIC_USER"
+    networks:
+      - internal
+
+  music-sync:
+    image: minio/mc:latest
+    restart: unless-stopped
+    depends_on:
+      - minio
+      - minio-init
+    environment:
+      MINIO_MUSIC_USER: ${MINIO_MUSIC_USER}
+      MINIO_MUSIC_PASSWORD: ${MINIO_MUSIC_PASSWORD}
+    volumes:
+      - ./music:/music:ro
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until mc alias set local http://minio:9000 "$$MINIO_MUSIC_USER" "$$MINIO_MUSIC_PASSWORD"; do sleep 2; done
+        until mc mirror --remove --overwrite --retry --checksum SHA256 /music local/music; do sleep 5; done
+        exec mc mirror --remove --overwrite --watch --retry --checksum SHA256 /music local/music
     networks:
       - internal
 
