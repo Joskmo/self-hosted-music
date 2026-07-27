@@ -44,6 +44,17 @@ func New(ctx context.Context) (*sql.DB, error) {
 		);`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS navidrome_id TEXT;`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_navidrome_id ON users(navidrome_id);`,
+		`CREATE TABLE IF NOT EXISTS music_metadata (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			file_path TEXT UNIQUE NOT NULL,
+			source TEXT NOT NULL DEFAULT 'scanner',
+			original_title TEXT NOT NULL DEFAULT '', original_artist TEXT NOT NULL DEFAULT '', original_album TEXT NOT NULL DEFAULT '',
+			suggested_title TEXT NOT NULL DEFAULT '', suggested_artist TEXT NOT NULL DEFAULT '', suggested_album TEXT NOT NULL DEFAULT '',
+			musicbrainz_id TEXT NOT NULL DEFAULT '', confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'review', last_error TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_music_metadata_status ON music_metadata(status, updated_at DESC);`,
 	}
 	for _, q := range migrations {
 		if _, err := db.ExecContext(ctx, q); err != nil {

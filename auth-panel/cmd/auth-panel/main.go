@@ -11,6 +11,7 @@ import (
 
 	"auth-panel/internal/db"
 	"auth-panel/internal/handlers"
+	"auth-panel/internal/metadata"
 	"auth-panel/internal/metube"
 	"auth-panel/internal/session"
 )
@@ -26,6 +27,22 @@ func main() {
 		log.Fatalf("db init: %v", err)
 	}
 	defer database.Close()
+
+	musicDir := os.Getenv("MUSIC_DIR")
+	if musicDir == "" {
+		musicDir = "/music"
+	}
+	metadataProcessor := metadata.NewProcessor(database, musicDir)
+	go func() {
+		if err := metadataProcessor.Scan(context.Background()); err != nil {
+			log.Printf("metadata initial scan: %v", err)
+		}
+		for range time.Tick(5 * time.Minute) {
+			if err := metadataProcessor.Scan(context.Background()); err != nil {
+				log.Printf("metadata scan: %v", err)
+			}
+		}
+	}()
 
 	sessions := session.New()
 	handlers.InitWebFS(webFiles, "web")
@@ -52,6 +69,9 @@ func main() {
 	mux.HandleFunc("GET /api/admin/users", handlers.AdminUsersHandler(database, sessions))
 	mux.HandleFunc("PUT /api/admin/users/{id}/role", handlers.AdminUpdateRoleHandler(database, sessions))
 	mux.HandleFunc("DELETE /api/admin/users/{id}", handlers.AdminDeleteUserHandler(database, sessions))
+	mux.HandleFunc("GET /api/admin/metadata", handlers.AdminMetadataListHandler(database, sessions))
+	mux.HandleFunc("PUT /api/admin/metadata/{id}", handlers.AdminMetadataUpdateHandler(database, sessions))
+	mux.HandleFunc("POST /api/admin/metadata/{id}/reprocess", handlers.AdminMetadataReprocessHandler(database, sessions, metadataProcessor))
 	mux.HandleFunc("GET /upload", handlers.UploadPageHandler)
 	mux.HandleFunc("POST /api/upload/auth", handlers.UploadAuthHandler(sessions))
 	mux.HandleFunc("POST /api/upload", handlers.UploadHandler(sessions))

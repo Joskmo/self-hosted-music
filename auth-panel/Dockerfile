@@ -6,7 +6,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /auth-panel ./cmd/auth-panel
 
 FROM alpine:3.19
-RUN apk add --no-cache unzip
+RUN apk add --no-cache unzip ffmpeg
 WORKDIR /app
 COPY --from=builder /auth-panel .
 ENV PORT=3000
