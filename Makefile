@@ -23,7 +23,7 @@ restart:
 
 # Production запуск
 prod-up:
-	mkdir -p data music auth-db-data minio-data
+	mkdir -p data music auth-db-data
 	docker compose up -d --build
 
 # Production остановка
