@@ -36,6 +36,7 @@ type Processor struct {
 	musicDir string
 	client   *http.Client
 	seen     map[string]fileObservation
+	scanMu   sync.Mutex
 }
 
 type fileObservation struct {
@@ -110,6 +111,9 @@ func NewProcessor(database *sql.DB, musicDir string) *Processor {
 // Scan discovers completed files. It intentionally does not alter audio tags;
 // all catalogue results enter the review queue.
 func (p *Processor) Scan(ctx context.Context) error {
+	p.scanMu.Lock()
+	defer p.scanMu.Unlock()
+
 	files, err := DiscoverAudioFiles(p.musicDir)
 	if err != nil {
 		return err

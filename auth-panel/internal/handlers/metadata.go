@@ -96,8 +96,9 @@ func AdminMetadataScanHandler(database *sql.DB, sessions *session.Store, scan fu
 				log.Printf("manual metadata scan: %v", err)
 			}
 		}()
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		JSONOK(w)
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	}
 }
 
