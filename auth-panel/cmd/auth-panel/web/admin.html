@@ -190,7 +190,9 @@
         const actions = document.createElement('td');
         const edit = document.createElement('button'); edit.className='small secondary'; edit.textContent='Править'; edit.onclick=()=>editMetadata(m); actions.append(edit);
         const retry = document.createElement('button'); retry.className='small'; retry.textContent='Повторить'; retry.onclick=()=>reprocessMetadata(m.id); actions.append(document.createTextNode(' ')); actions.append(retry);
-        const apply = document.createElement('button'); apply.className='small danger'; apply.textContent='Записать теги'; apply.onclick=()=>applyMetadata(m.id); actions.append(document.createTextNode(' ')); actions.append(apply);
+        if (m.status === 'review' || m.status === 'manual') {
+          const apply = document.createElement('button'); apply.className='small danger'; apply.textContent='Записать теги'; apply.onclick=()=>applyMetadata(m.id); actions.append(document.createTextNode(' ')); actions.append(apply);
+        }
         tr.append(original, proposed, state, actions); tbody.append(tr);
       }
     }

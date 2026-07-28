@@ -109,11 +109,15 @@ func AdminMetadataApplyHandler(database *sql.DB, sessions *session.Store, proces
 		if !RequireAdminSession(w, r, database, sessions) {
 			return
 		}
-		var path string
+		var path, status string
 		var track metadata.Track
-		err := database.QueryRow(`SELECT file_path, suggested_title, suggested_artist, suggested_album FROM music_metadata WHERE id=$1`, r.PathValue("id")).Scan(&path, &track.Title, &track.Artist, &track.Album)
+		err := database.QueryRow(`SELECT file_path, suggested_title, suggested_artist, suggested_album, status FROM music_metadata WHERE id=$1`, r.PathValue("id")).Scan(&path, &track.Title, &track.Artist, &track.Album, &status)
 		if err != nil {
 			JSONError(w, "not found", http.StatusNotFound)
+			return
+		}
+		if status != "review" && status != "manual" {
+			JSONError(w, "metadata must be reviewed before applying", http.StatusConflict)
 			return
 		}
 		if err := processor.Apply(r.Context(), path, track); err != nil {
