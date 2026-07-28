@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -26,10 +27,22 @@ type Processor struct {
 	db       *sql.DB
 	musicDir string
 	client   *http.Client
+	seen     map[string]fileObservation
+}
+
+type fileObservation struct {
+	size     int64
+	modified time.Time
+}
+
+func unchangedSincePreviousScan(seen map[string]fileObservation, path string, current fileObservation) bool {
+	previous, ok := seen[path]
+	seen[path] = current
+	return ok && previous == current
 }
 
 func NewProcessor(database *sql.DB, musicDir string) *Processor {
-	return &Processor{db: database, musicDir: musicDir, client: &http.Client{Timeout: 10 * time.Second}}
+	return &Processor{db: database, musicDir: musicDir, client: &http.Client{Timeout: 10 * time.Second}, seen: make(map[string]fileObservation)}
 }
 
 // Scan discovers completed files. It intentionally does not alter audio tags;
@@ -40,8 +53,18 @@ func (p *Processor) Scan(ctx context.Context) error {
 		return err
 	}
 	for _, path := range files {
+		info, err := os.Stat(filepath.Join(p.musicDir, filepath.FromSlash(path)))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if !unchangedSincePreviousScan(p.seen, path, fileObservation{size: info.Size(), modified: info.ModTime()}) {
+			continue
+		}
 		var status string
-		err := p.db.QueryRowContext(ctx, "SELECT status FROM music_metadata WHERE file_path = $1", path).Scan(&status)
+		err = p.db.QueryRowContext(ctx, "SELECT status FROM music_metadata WHERE file_path = $1", path).Scan(&status)
 		if err != nil && err != sql.ErrNoRows {
 			return err
 		}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -29,6 +30,10 @@ var audioExtensions = map[string]bool{
 	".ogg": true, ".opus": true, ".wav": true, ".wma": true,
 }
 
+// fileStabilityWindow gives downloaders that write directly to their final name
+// time to finish before the scanner reads the audio file.
+const fileStabilityWindow = 2 * time.Minute
+
 // DiscoverAudioFiles returns paths relative to root for completed supported files.
 // Hidden and common downloader temporary files are deliberately left untouched.
 func DiscoverAudioFiles(root string) ([]string, error) {
@@ -41,7 +46,7 @@ func DiscoverAudioFiles(root string) ([]string, error) {
 			return nil
 		}
 		base := info.Name()
-		if info.Mode()&os.ModeSymlink != 0 || strings.HasPrefix(base, ".") || strings.HasSuffix(strings.ToLower(base), ".part") || !audioExtensions[strings.ToLower(filepath.Ext(base))] {
+		if info.Mode()&os.ModeSymlink != 0 || strings.HasPrefix(base, ".") || strings.HasSuffix(strings.ToLower(base), ".part") || !audioExtensions[strings.ToLower(filepath.Ext(base))] || time.Since(info.ModTime()) < fileStabilityWindow {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)
