@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -81,6 +82,21 @@ func AdminMetadataUpdateHandler(database *sql.DB, sessions *session.Store) http.
 			JSONError(w, "not found", 404)
 			return
 		}
+		JSONOK(w)
+	}
+}
+
+func AdminMetadataScanHandler(database *sql.DB, sessions *session.Store, scan func(context.Context) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !RequireAdminSession(w, r, database, sessions) {
+			return
+		}
+		go func() {
+			if err := scan(context.Background()); err != nil {
+				log.Printf("manual metadata scan: %v", err)
+			}
+		}()
+		w.WriteHeader(http.StatusAccepted)
 		JSONOK(w)
 	}
 }

@@ -57,7 +57,8 @@
   <section>
     <h2>Метаданные музыки</h2>
     <p>Автоматические результаты только для проверки: исходные аудиотеги не меняются.</p>
-    <div id="msgMetadata" style="margin-bottom:12px"></div>
+    <button onclick="scanMetadata()">Проверить библиотеку</button>
+    <div id="msgMetadata" style="margin:12px 0"></div>
     <table><thead><tr><th>Файл / исходные данные</th><th>Предложение MusicBrainz</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="metadata"></tbody></table>
   </section>
 
@@ -175,6 +176,13 @@
       }
     }
 
+    async function scanMetadata() {
+      const msg = document.getElementById('msgMetadata');
+      const r = await fetch('/api/admin/metadata/scan', {method:'POST'});
+      const j = await r.json();
+      if (!r.ok) { msg.className='error'; msg.textContent=j.error || 'Не удалось запустить проверку'; return; }
+      msg.className='success'; msg.textContent='Проверка библиотеки запущена. Обнови страницу через пару минут.';
+    }
     async function loadMetadata() {
       const r = await fetch('/api/admin/metadata');
       if (!r.ok) return;

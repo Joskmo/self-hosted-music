@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 
@@ -52,6 +53,44 @@ func TestAdminPageHandlerRejectsNonAdminSession(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusForbidden)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAdminMetadataScanHandlerStartsScanForAdmin(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	sessions := session.New()
+	token := sessions.Create("admin")
+	mock.ExpectQuery("SELECT is_admin FROM users WHERE username = \\$1").
+		WithArgs("admin").
+		WillReturnRows(sqlmock.NewRows([]string{"is_admin"}).AddRow(true))
+	started := make(chan struct{}, 1)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/metadata/scan", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rr := httptest.NewRecorder()
+
+	AdminMetadataScanHandler(database, sessions, func(context.Context) error {
+		started <- struct{}{}
+		return nil
+	})(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusAccepted)
+	}
+	if got := rr.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("metadata scan was not started")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
