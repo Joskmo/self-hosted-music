@@ -237,6 +237,22 @@ func TestProcessorReprocessRejectsSymlinkedAudio(t *testing.T) {
 	}
 }
 
+func TestProcessorProcessRejectsSymlinkedAudio(t *testing.T) {
+	musicDir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "track.mp3")
+	if err := os.WriteFile(target, []byte("audio"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(musicDir, "track.mp3")); err != nil {
+		t.Fatal(err)
+	}
+
+	p := NewProcessor(nil, musicDir)
+	if err := p.process(context.Background(), "track.mp3"); err == nil {
+		t.Fatal("process() accepted a symlinked audio file")
+	}
+}
+
 func TestOpenLibraryFileRejectsFIFOWithoutBlocking(t *testing.T) {
 	musicDir := t.TempDir()
 	if err := syscall.Mkfifo(filepath.Join(musicDir, "stream.mp3"), 0o600); err != nil {

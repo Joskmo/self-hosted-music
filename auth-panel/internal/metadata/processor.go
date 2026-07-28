@@ -234,7 +234,12 @@ func (p *Processor) openLibraryFile(path string) (*os.File, error) {
 }
 
 func (p *Processor) process(ctx context.Context, path string) error {
-	return p.processTrack(ctx, path, extractTrack(filepath.Join(p.musicDir, filepath.FromSlash(path))))
+	file, err := p.openLibraryFile(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return p.processTrack(ctx, path, extractTrackFromFile(file, path))
 }
 
 func (p *Processor) processTrack(ctx context.Context, path string, track Track) error {
