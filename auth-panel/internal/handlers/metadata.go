@@ -102,3 +102,28 @@ func AdminMetadataReprocessHandler(database *sql.DB, sessions *session.Store, pr
 		JSONOK(w)
 	}
 }
+
+// AdminMetadataApplyHandler writes metadata only after an explicit admin action.
+func AdminMetadataApplyHandler(database *sql.DB, sessions *session.Store, processor *metadata.Processor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !RequireAdminSession(w, r, database, sessions) {
+			return
+		}
+		var path string
+		var track metadata.Track
+		err := database.QueryRow(`SELECT file_path, suggested_title, suggested_artist, suggested_album FROM music_metadata WHERE id=$1`, r.PathValue("id")).Scan(&path, &track.Title, &track.Artist, &track.Album)
+		if err != nil {
+			JSONError(w, "not found", http.StatusNotFound)
+			return
+		}
+		if err := processor.Apply(r.Context(), path, track); err != nil {
+			JSONError(w, "metadata write failed", http.StatusInternalServerError)
+			return
+		}
+		if _, err := database.Exec(`UPDATE music_metadata SET original_title=$1, original_artist=$2, original_album=$3, status='resolved', last_error='', updated_at=NOW() WHERE id=$4`, track.Title, track.Artist, track.Album, r.PathValue("id")); err != nil {
+			JSONError(w, "metadata update failed", http.StatusInternalServerError)
+			return
+		}
+		JSONOK(w)
+	}
+}

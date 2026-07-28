@@ -72,6 +72,7 @@ func main() {
 	mux.HandleFunc("GET /api/admin/metadata", handlers.AdminMetadataListHandler(database, sessions))
 	mux.HandleFunc("PUT /api/admin/metadata/{id}", handlers.AdminMetadataUpdateHandler(database, sessions))
 	mux.HandleFunc("POST /api/admin/metadata/{id}/reprocess", handlers.AdminMetadataReprocessHandler(database, sessions, metadataProcessor))
+	mux.HandleFunc("POST /api/admin/metadata/{id}/apply", handlers.AdminMetadataApplyHandler(database, sessions, metadataProcessor))
 	mux.HandleFunc("GET /upload", handlers.UploadPageHandler)
 	mux.HandleFunc("POST /api/upload/auth", handlers.UploadAuthHandler(sessions))
 	mux.HandleFunc("POST /api/upload", handlers.UploadHandler(sessions))

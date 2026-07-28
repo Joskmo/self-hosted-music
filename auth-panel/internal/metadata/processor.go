@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -33,6 +34,60 @@ type Processor struct {
 type fileObservation struct {
 	size     int64
 	modified time.Time
+}
+
+var runFFmpeg = func(ctx context.Context, name string, args ...string) error {
+	return exec.CommandContext(ctx, name, args...).Run()
+}
+
+var chownFile = os.Chown
+
+func ownershipOf(info os.FileInfo) (int, int, error) {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, fmt.Errorf("file ownership is unavailable")
+	}
+	return int(stat.Uid), int(stat.Gid), nil
+}
+
+// ApplyTags explicitly writes reviewed metadata using a temporary file in the
+// same directory. The original is only replaced after ffmpeg succeeds.
+func ApplyTags(ctx context.Context, path string, track Track) error {
+	if strings.TrimSpace(track.Title) == "" || strings.TrimSpace(track.Artist) == "" {
+		return fmt.Errorf("title and artist are required")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("not a regular audio file")
+	}
+	uid, gid, err := ownershipOf(info)
+	if err != nil {
+		return err
+	}
+	ext := filepath.Ext(path)
+	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".metadata-*"+ext)
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	if err := temp.Close(); err != nil {
+		os.Remove(tempPath)
+		return err
+	}
+	defer os.Remove(tempPath)
+	if err := runFFmpeg(ctx, "ffmpeg", "-nostdin", "-v", "error", "-y", "-i", path, "-map", "0", "-c", "copy", "-metadata", "title="+track.Title, "-metadata", "artist="+track.Artist, "-metadata", "album="+track.Album, tempPath); err != nil {
+		return fmt.Errorf("write audio tags: %w", err)
+	}
+	if err := os.Chmod(tempPath, info.Mode().Perm()); err != nil {
+		return err
+	}
+	if err := chownFile(tempPath, uid, gid); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
 }
 
 func unchangedSincePreviousScan(seen map[string]fileObservation, path string, current fileObservation) bool {
@@ -84,6 +139,14 @@ func (p *Processor) Reprocess(ctx context.Context, path string) error {
 		return fmt.Errorf("invalid file path")
 	}
 	return p.process(ctx, path)
+}
+
+// Apply writes explicitly reviewed tags to a known library file.
+func (p *Processor) Apply(ctx context.Context, path string, track Track) error {
+	if filepath.IsAbs(path) || strings.Contains(path, "..") {
+		return fmt.Errorf("invalid file path")
+	}
+	return ApplyTags(ctx, filepath.Join(p.musicDir, filepath.FromSlash(path)), track)
 }
 
 func (p *Processor) process(ctx context.Context, path string) error {

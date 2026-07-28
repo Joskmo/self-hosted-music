@@ -1,9 +1,12 @@
 package metadata
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -112,5 +115,72 @@ func TestHighConfidenceRequiresExactTitleAndArtist(t *testing.T) {
 				t.Fatalf("IsHighConfidence() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestApplyTagsWritesToTemporaryFileBeforeReplacingOriginal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Artist - Song.mp3")
+	if err := os.WriteFile(path, []byte("audio"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	var gotName string
+	var gotArgs []string
+	oldRun := runFFmpeg
+	oldChown := chownFile
+	var gotOwnerPath string
+	var gotUID, gotGID int
+	runFFmpeg = func(_ context.Context, name string, args ...string) error {
+		gotName, gotArgs = name, args
+		return os.WriteFile(args[len(args)-1], []byte("retagged"), 0o640)
+	}
+	chownFile = func(name string, uid, gid int) error {
+		gotOwnerPath, gotUID, gotGID = name, uid, gid
+		return nil
+	}
+	t.Cleanup(func() { runFFmpeg = oldRun; chownFile = oldChown })
+
+	if err := ApplyTags(context.Background(), path, Track{Title: "Song", Artist: "Artist", Album: "Album"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotName != "ffmpeg" {
+		t.Fatalf("command = %q, want ffmpeg", gotName)
+	}
+	joined := strings.Join(gotArgs, " ")
+	for _, want := range []string{"-i " + path, "-metadata title=Song", "-metadata artist=Artist", "-metadata album=Album", "-c copy"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("ffmpeg arguments %q do not contain %q", joined, want)
+		}
+	}
+	if gotArgs[len(gotArgs)-1] == path || !strings.Contains(filepath.Base(gotArgs[len(gotArgs)-1]), ".metadata-") {
+		t.Fatalf("output %q is not a temporary metadata file", gotArgs[len(gotArgs)-1])
+	}
+	stat := mustStat(t, path)
+	if gotOwnerPath != gotArgs[len(gotArgs)-1] || gotUID != int(stat.Uid) || gotGID != int(stat.Gid) {
+		t.Fatalf("temporary ownership = %q %d:%d, want %q %d:%d", gotOwnerPath, gotUID, gotGID, gotArgs[len(gotArgs)-1], stat.Uid, stat.Gid)
+	}
+}
+
+func mustStat(t *testing.T, path string) *syscall.Stat_t {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Sys().(*syscall.Stat_t)
+}
+
+func TestOwnershipOfReadsUnixFileOwner(t *testing.T) {
+	info, err := os.Stat(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := info.Sys().(*syscall.Stat_t)
+	uid, gid, err := ownershipOf(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uid != int(stat.Uid) || gid != int(stat.Gid) {
+		t.Fatalf("ownershipOf() = %d:%d, want %d:%d", uid, gid, stat.Uid, stat.Gid)
 	}
 }

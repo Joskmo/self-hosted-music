@@ -177,6 +177,7 @@
         const actions = document.createElement('td');
         const edit = document.createElement('button'); edit.className='small secondary'; edit.textContent='Править'; edit.onclick=()=>editMetadata(m); actions.append(edit);
         const retry = document.createElement('button'); retry.className='small'; retry.textContent='Повторить'; retry.onclick=()=>reprocessMetadata(m.id); actions.append(document.createTextNode(' ')); actions.append(retry);
+        const apply = document.createElement('button'); apply.className='small danger'; apply.textContent='Записать теги'; apply.onclick=()=>applyMetadata(m.id); actions.append(document.createTextNode(' ')); actions.append(apply);
         tr.append(original, proposed, state, actions); tbody.append(tr);
       }
     }
@@ -190,6 +191,13 @@
     async function reprocessMetadata(id) {
       const r = await fetch('/api/admin/metadata/' + id + '/reprocess', {method:'POST'});
       const j = await r.json(); if (!r.ok) { document.getElementById('msgMetadata').textContent=j.error; return; } loadMetadata();
+    }
+    async function applyMetadata(id) {
+      if (!confirm('Записать отредактированные теги в аудиофайл? Исходный файл будет заменён только после успешной обработки.')) return;
+      const r = await fetch('/api/admin/metadata/' + id + '/apply', {method:'POST'});
+      const j = await r.json();
+      if (!r.ok) { document.getElementById('msgMetadata').className='error'; document.getElementById('msgMetadata').textContent=j.error; return; }
+      document.getElementById('msgMetadata').className='success'; document.getElementById('msgMetadata').textContent='Теги записаны'; loadMetadata();
     }
 
     loadMe().then(() => { loadInvites(); loadUsers(); loadMetadata(); });
