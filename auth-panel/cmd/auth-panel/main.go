@@ -63,7 +63,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", handlers.LoginHandler(database, sessions))
 	mux.HandleFunc("GET /register", handlers.RegisterPageHandler)
 	mux.HandleFunc("POST /api/register", handlers.RegisterHandler(database, sessions))
-	mux.HandleFunc("GET /admin", adminPageHandler(sessions))
+	mux.HandleFunc("GET /admin", adminPageHandler(database, sessions))
 	mux.HandleFunc("GET /api/admin/invites", handlers.AdminInvitesHandler(database, sessions))
 	mux.HandleFunc("POST /api/admin/invites", handlers.AdminCreateInviteHandler(database, sessions))
 	mux.HandleFunc("GET /api/admin/users", handlers.AdminUsersHandler(database, sessions))
@@ -136,8 +136,8 @@ func indexHandler(sessions *session.Store) http.HandlerFunc {
 	}
 }
 
-func adminPageHandler(sessions *session.Store) http.HandlerFunc {
+func adminPageHandler(database *sql.DB, sessions *session.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		handlers.AdminPageHandler(w, r, sessions)
+		handlers.AdminPageHandler(w, r, database, sessions)
 	}
 }

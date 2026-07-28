@@ -10,8 +10,8 @@ import (
 	"auth-panel/internal/session"
 )
 
-func AdminPageHandler(w http.ResponseWriter, r *http.Request, sessions *session.Store) {
-	if RequireSession(w, r, sessions) == "" {
+func AdminPageHandler(w http.ResponseWriter, r *http.Request, database *sql.DB, sessions *session.Store) {
+	if !RequireAdminSession(w, r, database, sessions) {
 		return
 	}
 	RenderTemplate(w, "admin.html", map[string]any{"NavidromeURL": PublicNavidromeURL()})
