@@ -18,6 +18,13 @@ import (
 
 var musicBrainzURL = "https://musicbrainz.org/ws/2/recording"
 
+// metadataUpsertSQL keeps the initial extracted tags immutable as an audit
+// snapshot. Subsequent scans refresh only the catalogue result and its status.
+const metadataUpsertSQL = `INSERT INTO music_metadata
+	(file_path, source, original_title, original_artist, original_album, suggested_title, suggested_artist, suggested_album, musicbrainz_id, confidence, status, last_error, updated_at)
+	VALUES ($1, 'scanner', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+	ON CONFLICT (file_path) DO UPDATE SET suggested_title=EXCLUDED.suggested_title, suggested_artist=EXCLUDED.suggested_artist, suggested_album=EXCLUDED.suggested_album, musicbrainz_id=EXCLUDED.musicbrainz_id, confidence=EXCLUDED.confidence, status=EXCLUDED.status, last_error=EXCLUDED.last_error, updated_at=NOW()`
+
 var musicBrainzLimiter struct {
 	sync.Mutex
 	last time.Time
@@ -257,10 +264,7 @@ func (p *Processor) processTrack(ctx context.Context, path string, track Track) 
 	if lookupErr != nil {
 		status = "unavailable"
 	}
-	_, err := p.db.ExecContext(ctx, `INSERT INTO music_metadata
-		(file_path, source, original_title, original_artist, original_album, suggested_title, suggested_artist, suggested_album, musicbrainz_id, confidence, status, last_error, updated_at)
-		VALUES ($1, 'scanner', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-		ON CONFLICT (file_path) DO UPDATE SET original_title=EXCLUDED.original_title, original_artist=EXCLUDED.original_artist, original_album=EXCLUDED.original_album, suggested_title=EXCLUDED.suggested_title, suggested_artist=EXCLUDED.suggested_artist, suggested_album=EXCLUDED.suggested_album, musicbrainz_id=EXCLUDED.musicbrainz_id, confidence=EXCLUDED.confidence, status=EXCLUDED.status, last_error=EXCLUDED.last_error, updated_at=NOW()`,
+	_, err := p.db.ExecContext(ctx, metadataUpsertSQL,
 		path, track.Title, track.Artist, track.Album, candidate.Title, candidate.Artist, candidate.Album, candidate.ID, confidence, status, errorText(lookupErr))
 	return err
 }

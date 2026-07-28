@@ -301,6 +301,14 @@ func TestOwnershipOfReadsUnixFileOwner(t *testing.T) {
 	}
 }
 
+func TestMetadataUpsertPreservesInitialOriginalValues(t *testing.T) {
+	if strings.Contains(metadataUpsertSQL, "original_title=EXCLUDED.original_title") ||
+		strings.Contains(metadataUpsertSQL, "original_artist=EXCLUDED.original_artist") ||
+		strings.Contains(metadataUpsertSQL, "original_album=EXCLUDED.original_album") {
+		t.Fatal("reprocessing must not overwrite the initial original metadata audit snapshot")
+	}
+}
+
 func TestLookupEscapesMusicBrainzQueryAndKeepsAllArtistCredits(t *testing.T) {
 	var received url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
