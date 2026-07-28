@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 
@@ -86,19 +85,32 @@ func AdminMetadataUpdateHandler(database *sql.DB, sessions *session.Store) http.
 	}
 }
 
-func AdminMetadataScanHandler(database *sql.DB, sessions *session.Store, scan func(context.Context) error) http.HandlerFunc {
+// AdminMetadataScanHandler starts one scan and rejects a duplicate request while
+// the first scan is still running.
+func AdminMetadataScanHandler(database *sql.DB, sessions *session.Store, start func() bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !RequireAdminSession(w, r, database, sessions) {
 			return
 		}
-		go func() {
-			if err := scan(context.Background()); err != nil {
-				log.Printf("manual metadata scan: %v", err)
-			}
-		}()
+		if !start() {
+			JSONError(w, "metadata scan is already running", http.StatusConflict)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	}
+}
+
+// AdminMetadataScanStatusHandler returns a lightweight state for polling from
+// the admin page without exposing any metadata records.
+func AdminMetadataScanStatusHandler(database *sql.DB, sessions *session.Store, status func() metadata.ScanStatus) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !RequireAdminSession(w, r, database, sessions) {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status())
 	}
 }
 

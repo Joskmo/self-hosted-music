@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -71,14 +72,14 @@ func TestAdminMetadataScanHandlerStartsScanForAdmin(t *testing.T) {
 	mock.ExpectQuery("SELECT is_admin FROM users WHERE username = \\$1").
 		WithArgs("admin").
 		WillReturnRows(sqlmock.NewRows([]string{"is_admin"}).AddRow(true))
-	started := make(chan struct{}, 1)
+	started := false
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/metadata/scan", nil)
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
 	rr := httptest.NewRecorder()
 
-	AdminMetadataScanHandler(database, sessions, func(context.Context) error {
-		started <- struct{}{}
-		return nil
+	AdminMetadataScanHandler(database, sessions, func() bool {
+		started = true
+		return true
 	})(rr, req)
 
 	if rr.Code != http.StatusAccepted {
@@ -87,10 +88,45 @@ func TestAdminMetadataScanHandlerStartsScanForAdmin(t *testing.T) {
 	if got := rr.Header().Get("Content-Type"); got != "application/json" {
 		t.Fatalf("Content-Type = %q, want application/json", got)
 	}
-	select {
-	case <-started:
-	case <-time.After(time.Second):
+	if !started {
 		t.Fatal("metadata scan was not started")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAdminMetadataScanStatusHandlerReturnsRunningAndLastCheck(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	sessions := session.New()
+	token := sessions.Create("admin")
+	mock.ExpectQuery("SELECT is_admin FROM users WHERE username = \\$1").
+		WithArgs("admin").
+		WillReturnRows(sqlmock.NewRows([]string{"is_admin"}).AddRow(true))
+	startedAt := time.Date(2026, time.July, 28, 15, 0, 0, 0, time.UTC)
+	finishedAt := startedAt.Add(2 * time.Minute)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/metadata/scan", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rr := httptest.NewRecorder()
+
+	AdminMetadataScanStatusHandler(database, sessions, func() metadata.ScanStatus {
+		return metadata.ScanStatus{Running: true, StartedAt: startedAt, LastFinishedAt: finishedAt}
+	})(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	var got metadata.ScanStatus
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Running || !got.StartedAt.Equal(startedAt) || !got.LastFinishedAt.Equal(finishedAt) {
+		t.Fatalf("scan status = %#v, want running status with timestamps", got)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

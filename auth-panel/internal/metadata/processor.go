@@ -30,6 +30,14 @@ var musicBrainzLimiter struct {
 	last time.Time
 }
 
+// ScanStatus is the current and most recently completed library scan state.
+type ScanStatus struct {
+	Running        bool      `json:"running"`
+	StartedAt      time.Time `json:"started_at"`
+	LastFinishedAt time.Time `json:"last_finished_at"`
+	LastError      string    `json:"last_error"`
+}
+
 // Processor is the single asynchronous pipeline for uploads and MeTube files.
 type Processor struct {
 	db       *sql.DB
@@ -37,6 +45,8 @@ type Processor struct {
 	client   *http.Client
 	seen     map[string]fileObservation
 	scanMu   sync.Mutex
+	statusMu sync.Mutex
+	status   ScanStatus
 }
 
 type fileObservation struct {
@@ -116,6 +126,37 @@ func musicBrainzHTTPClient(proxyRaw string) *http.Client {
 		transport.Proxy = http.ProxyURL(proxy)
 	}
 	return &http.Client{Timeout: 10 * time.Second, Transport: transport}
+}
+
+// StartScan launches a scan only when another scan is not already running.
+// It returns false when an existing scan owns the library scanner.
+func (p *Processor) StartScan() bool {
+	p.statusMu.Lock()
+	if p.status.Running {
+		p.statusMu.Unlock()
+		return false
+	}
+	p.status.Running = true
+	p.status.StartedAt = time.Now().UTC()
+	p.status.LastError = ""
+	p.statusMu.Unlock()
+
+	go func() {
+		err := p.Scan(context.Background())
+		p.statusMu.Lock()
+		p.status.Running = false
+		p.status.LastFinishedAt = time.Now().UTC()
+		p.status.LastError = errorText(err)
+		p.statusMu.Unlock()
+	}()
+	return true
+}
+
+// Status returns a copy safe for use by the administration API.
+func (p *Processor) Status() ScanStatus {
+	p.statusMu.Lock()
+	defer p.statusMu.Unlock()
+	return p.status
 }
 
 // Scan discovers completed files. It intentionally does not alter audio tags;

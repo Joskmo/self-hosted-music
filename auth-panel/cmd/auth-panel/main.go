@@ -33,14 +33,10 @@ func main() {
 		musicDir = "/music"
 	}
 	metadataProcessor := metadata.NewProcessor(database, musicDir)
+	metadataProcessor.StartScan()
 	go func() {
-		if err := metadataProcessor.Scan(context.Background()); err != nil {
-			log.Printf("metadata initial scan: %v", err)
-		}
 		for range time.Tick(5 * time.Minute) {
-			if err := metadataProcessor.Scan(context.Background()); err != nil {
-				log.Printf("metadata scan: %v", err)
-			}
+			metadataProcessor.StartScan()
 		}
 	}()
 
@@ -70,7 +66,8 @@ func main() {
 	mux.HandleFunc("PUT /api/admin/users/{id}/role", handlers.AdminUpdateRoleHandler(database, sessions))
 	mux.HandleFunc("DELETE /api/admin/users/{id}", handlers.AdminDeleteUserHandler(database, sessions))
 	mux.HandleFunc("GET /api/admin/metadata", handlers.AdminMetadataListHandler(database, sessions))
-	mux.HandleFunc("POST /api/admin/metadata/scan", handlers.AdminMetadataScanHandler(database, sessions, metadataProcessor.Scan))
+	mux.HandleFunc("GET /api/admin/metadata/scan", handlers.AdminMetadataScanStatusHandler(database, sessions, metadataProcessor.Status))
+	mux.HandleFunc("POST /api/admin/metadata/scan", handlers.AdminMetadataScanHandler(database, sessions, metadataProcessor.StartScan))
 	mux.HandleFunc("PUT /api/admin/metadata/{id}", handlers.AdminMetadataUpdateHandler(database, sessions))
 	mux.HandleFunc("POST /api/admin/metadata/{id}/reprocess", handlers.AdminMetadataReprocessHandler(database, sessions, metadataProcessor))
 	mux.HandleFunc("POST /api/admin/metadata/{id}/apply", handlers.AdminMetadataApplyHandler(database, sessions, metadataProcessor))
