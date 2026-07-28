@@ -107,21 +107,29 @@ func copyMultipartFile(fh *multipart.FileHeader, dest string) error {
 		return err
 	}
 	defer src.Close()
+	return copyToNewFile(src, dest)
+}
 
-	dst, err := os.Create(dest)
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	return copyToNewFile(in, dst)
+}
+
+// copyToNewFile intentionally refuses collisions. Uploading must never replace
+// an existing library file (or follow an existing symlink) without review.
+func copyToNewFile(src io.Reader, dest string) error {
+	dst, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
 		return err
 	}
 	defer dst.Close()
-
-	_, err = io.Copy(dst, src)
-	return err
-}
-
-func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
+	if _, err := io.Copy(dst, src); err != nil {
+		os.Remove(dest)
 		return err
 	}
-	return os.WriteFile(dst, data, 0644)
+	return nil
 }

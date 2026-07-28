@@ -62,3 +62,41 @@ func TestSaveUploadedZipSkipsSymlinkedAudio(t *testing.T) {
 		t.Fatalf("symlinked audio was copied: %v", err)
 	}
 }
+
+func TestSaveUploadsDoesNotOverwriteExistingAudio(t *testing.T) {
+	musicDir := t.TempDir()
+	destination := filepath.Join(musicDir, "song.mp3")
+	if err := os.WriteFile(destination, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("files", "song.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("replacement")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("POST", "/", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if err := request.ParseMultipartForm(1 << 20); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = SaveUploads(musicDir, request.MultipartForm.File["files"])
+	if err == nil {
+		t.Fatal("SaveUploads() overwrote an existing library file")
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "original" {
+		t.Fatalf("existing file = %q, want original content", got)
+	}
+}
