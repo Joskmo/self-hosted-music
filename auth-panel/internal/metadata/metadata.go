@@ -83,6 +83,8 @@ func ParseFilename(path string) Track {
 		return Track{Title: parts[0]}
 	case 2:
 		return Track{Artist: parts[0], Title: parts[1]}
+	case 3:
+		return Track{Artist: parts[0], Album: parts[1], Title: parts[2]}
 	default:
 		trackPart := parts[len(parts)-1]
 		return Track{Artist: parts[0], Album: strings.Join(parts[1:len(parts)-2], " - "), Title: trackPart}

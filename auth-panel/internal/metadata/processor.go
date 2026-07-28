@@ -188,9 +188,10 @@ func errorText(err error) string {
 }
 
 func extractTrack(path string) Track {
+	filenameTrack := ParseFilename(path)
 	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "json", path).Output()
 	if err != nil {
-		return ParseFilename(path)
+		return filenameTrack
 	}
 	var data struct {
 		Format struct {
@@ -198,11 +199,21 @@ func extractTrack(path string) Track {
 		} `json:"format"`
 	}
 	if json.Unmarshal(out, &data) != nil {
-		return ParseFilename(path)
+		return filenameTrack
 	}
 	t := Track{Title: data.Format.Tags["title"], Artist: data.Format.Tags["artist"], Album: data.Format.Tags["album"]}
-	if t.Title == "" {
-		return ParseFilename(path)
+	return mergeTrackHints(t, filenameTrack)
+}
+
+func mergeTrackHints(tags, filename Track) Track {
+	if tags.Title == "" {
+		tags.Title = filename.Title
 	}
-	return t
+	if tags.Artist == "" {
+		tags.Artist = filename.Artist
+	}
+	if tags.Album == "" {
+		tags.Album = filename.Album
+	}
+	return tags
 }

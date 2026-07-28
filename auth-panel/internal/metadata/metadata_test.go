@@ -79,6 +79,22 @@ func TestParseFilenameFallback(t *testing.T) {
 	}
 }
 
+func TestParseFilenameThreePartFallback(t *testing.T) {
+	got := ParseFilename("Music/Artist Name - Album Name - Track Name.flac")
+	want := Track{Artist: "Artist Name", Album: "Album Name", Title: "Track Name"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseFilename() = %#v, want %#v", got, want)
+	}
+}
+
+func TestMergeTrackHintsUsesFilenameForMissingTags(t *testing.T) {
+	got := mergeTrackHints(Track{Title: "Tagged Song"}, Track{Artist: "Artist Name", Album: "Album Name", Title: "Filename Song"})
+	want := Track{Artist: "Artist Name", Album: "Album Name", Title: "Tagged Song"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("mergeTrackHints() = %#v, want %#v", got, want)
+	}
+}
+
 func TestHighConfidenceRequiresExactTitleAndArtist(t *testing.T) {
 	tests := []struct {
 		name  string
