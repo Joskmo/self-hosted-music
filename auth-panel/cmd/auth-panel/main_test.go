@@ -27,3 +27,26 @@ func TestMusicServerLinksUsePublicConfiguredURL(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminTemplateDoesNotInterpolateUserFieldsIntoHTML(t *testing.T) {
+	handlers.InitWebFS(webFiles, "web")
+	rr := httptest.NewRecorder()
+	handlers.RenderTemplate(rr, "admin.html", map[string]any{"NavidromeURL": "https://music.example.test"})
+	body := rr.Body.String()
+	start := strings.Index(body, "async function loadUsers()")
+	end := strings.Index(body, "async function toggleRole")
+	if start < 0 || end < start {
+		t.Fatal("admin user renderer was not found")
+	}
+	usersRenderer := body[start:end]
+	for _, unsafe := range []string{"innerHTML", "setAttribute(", "insertAdjacentHTML", "outerHTML", "onclick="} {
+		if strings.Contains(usersRenderer, unsafe) {
+			t.Fatalf("admin user renderer must not build executable HTML from user fields: found %q", unsafe)
+		}
+	}
+	for _, safe := range []string{"name.textContent = u.name || u.username", "username.textContent = u.username", "roleBtn.onclick = () => toggleRole(u.id, !u.is_admin)", "deleteBtn.onclick = () => deleteUser(u.id)"} {
+		if !strings.Contains(usersRenderer, safe) {
+			t.Fatalf("admin user renderer is missing safe DOM assignment %q", safe)
+		}
+	}
+}
