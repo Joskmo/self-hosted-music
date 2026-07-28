@@ -212,8 +212,9 @@ func TestApplyTagsWritesToTemporaryFileBeforeReplacingOriginal(t *testing.T) {
 			t.Errorf("ffmpeg arguments %q do not contain %q", joined, want)
 		}
 	}
-	if gotArgs[len(gotArgs)-1] == path || !strings.Contains(filepath.Base(gotArgs[len(gotArgs)-1]), ".metadata-") {
-		t.Fatalf("output %q is not a temporary metadata file", gotArgs[len(gotArgs)-1])
+	outputName := filepath.Base(gotArgs[len(gotArgs)-1])
+	if gotArgs[len(gotArgs)-1] == path || !strings.HasPrefix(outputName, ".metadata-") || filepath.Ext(outputName) != ".mp3" {
+		t.Fatalf("output %q is not a hidden temporary audio file", gotArgs[len(gotArgs)-1])
 	}
 	stat := mustStat(t, path)
 	if gotOwnerPath != gotArgs[len(gotArgs)-1] || gotUID != int(stat.Uid) || gotGID != int(stat.Gid) {

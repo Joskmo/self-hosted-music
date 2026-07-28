@@ -86,7 +86,7 @@ func ApplyTags(ctx context.Context, path string, track Track) error {
 		return err
 	}
 	ext := filepath.Ext(path)
-	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".metadata-*"+ext)
+	temp, err := os.CreateTemp(filepath.Dir(path), ".metadata-*"+ext)
 	if err != nil {
 		return err
 	}
