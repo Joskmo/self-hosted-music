@@ -46,7 +46,7 @@ func DiscoverAudioFiles(root string) ([]string, error) {
 			return nil
 		}
 		base := info.Name()
-		if info.Mode()&os.ModeSymlink != 0 || strings.HasPrefix(base, ".") || strings.HasSuffix(strings.ToLower(base), ".part") || !audioExtensions[strings.ToLower(filepath.Ext(base))] || time.Since(info.ModTime()) < fileStabilityWindow {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || strings.HasPrefix(base, ".") || strings.HasSuffix(strings.ToLower(base), ".part") || !audioExtensions[strings.ToLower(filepath.Ext(base))] || time.Since(info.ModTime()) < fileStabilityWindow {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)

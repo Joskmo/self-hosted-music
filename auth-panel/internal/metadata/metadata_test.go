@@ -64,6 +64,26 @@ func TestDiscoverAudioFilesSkipsRecentlyModifiedAudio(t *testing.T) {
 	}
 }
 
+func TestDiscoverAudioFilesSkipsNonRegularFiles(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "stream.mp3")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-fileStabilityWindow - time.Second)
+	if err := os.Chtimes(fifo, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := DiscoverAudioFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("DiscoverAudioFiles() = %v, want no non-regular files", got)
+	}
+}
+
 func TestFileObservationRequiresTwoUnchangedScans(t *testing.T) {
 	seen := map[string]fileObservation{}
 	first := fileObservation{size: 100, modified: time.Unix(100, 0)}
@@ -162,6 +182,42 @@ func TestApplyTagsWritesToTemporaryFileBeforeReplacingOriginal(t *testing.T) {
 	stat := mustStat(t, path)
 	if gotOwnerPath != gotArgs[len(gotArgs)-1] || gotUID != int(stat.Uid) || gotGID != int(stat.Gid) {
 		t.Fatalf("temporary ownership = %q %d:%d, want %q %d:%d", gotOwnerPath, gotUID, gotGID, gotArgs[len(gotArgs)-1], stat.Uid, stat.Gid)
+	}
+}
+
+func TestApplyTagsRejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.mp3")
+	if err := os.WriteFile(target, []byte("audio"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "linked.mp3")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyTags(context.Background(), link, Track{Title: "Song", Artist: "Artist"}); err == nil {
+		t.Fatal("ApplyTags() accepted a symlink")
+	}
+}
+
+func TestProcessorApplyRejectsSymlinkedParent(t *testing.T) {
+	musicDir := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "track.mp3"), []byte("audio"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(musicDir, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	p := NewProcessor(nil, musicDir)
+	oldRun, oldChown := runFFmpeg, chownFile
+	runFFmpeg = func(_ context.Context, _ string, args ...string) error {
+		return os.WriteFile(args[len(args)-1], []byte("retagged"), 0o640)
+	}
+	chownFile = func(string, int, int) error { return nil }
+	t.Cleanup(func() { runFFmpeg, chownFile = oldRun, oldChown })
+	if err := p.Apply(context.Background(), "linked/track.mp3", Track{Title: "Song", Artist: "Artist"}); err == nil {
+		t.Fatal("Apply() accepted a file beneath a symlinked directory")
 	}
 }
 

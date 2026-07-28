@@ -56,11 +56,11 @@ func ApplyTags(ctx context.Context, path string, track Track) error {
 	if strings.TrimSpace(track.Title) == "" || strings.TrimSpace(track.Artist) == "" {
 		return fmt.Errorf("title and artist are required")
 	}
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() {
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return fmt.Errorf("not a regular audio file")
 	}
 	uid, gid, err := ownershipOf(info)
@@ -143,10 +143,45 @@ func (p *Processor) Reprocess(ctx context.Context, path string) error {
 
 // Apply writes explicitly reviewed tags to a known library file.
 func (p *Processor) Apply(ctx context.Context, path string, track Track) error {
-	if filepath.IsAbs(path) || strings.Contains(path, "..") {
-		return fmt.Errorf("invalid file path")
+	file, err := p.libraryFile(path)
+	if err != nil {
+		return err
 	}
-	return ApplyTags(ctx, filepath.Join(p.musicDir, filepath.FromSlash(path)), track)
+	return ApplyTags(ctx, file, track)
+}
+
+func (p *Processor) libraryFile(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return "", fmt.Errorf("invalid file path")
+	}
+	root, err := filepath.Abs(p.musicDir)
+	if err != nil {
+		return "", err
+	}
+	file := filepath.Clean(filepath.Join(root, filepath.FromSlash(path)))
+	if file != root && !strings.HasPrefix(file, root+string(os.PathSeparator)) {
+		return "", fmt.Errorf("invalid file path")
+	}
+	for dir := filepath.Dir(file); ; dir = filepath.Dir(dir) {
+		info, err := os.Lstat(dir)
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return "", fmt.Errorf("invalid music directory")
+		}
+		if dir == root {
+			break
+		}
+	}
+	info, err := os.Lstat(file)
+	if err != nil {
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("not a regular audio file")
+	}
+	return file, nil
 }
 
 func (p *Processor) process(ctx context.Context, path string) error {
