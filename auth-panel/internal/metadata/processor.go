@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const musicBrainzURL = "https://musicbrainz.org/ws/2/recording"
+var musicBrainzURL = "https://musicbrainz.org/ws/2/recording"
 
 var musicBrainzLimiter struct {
 	sync.Mutex
@@ -202,7 +202,8 @@ func (p *Processor) lookup(ctx context.Context, track Track) (candidate Candidat
 			ID           string `json:"id"`
 			Title        string `json:"title"`
 			ArtistCredit []struct {
-				Name string `json:"name"`
+				Name       string `json:"name"`
+				JoinPhrase string `json:"joinphrase"`
 			} `json:"artist-credit"`
 			Releases []struct {
 				Title string `json:"title"`
@@ -217,8 +218,8 @@ func (p *Processor) lookup(ctx context.Context, track Track) (candidate Candidat
 	}
 	r := data.Recordings[0]
 	candidate.ID, candidate.Title = r.ID, r.Title
-	if len(r.ArtistCredit) > 0 {
-		candidate.Artist = r.ArtistCredit[0].Name
+	for _, credit := range r.ArtistCredit {
+		candidate.Artist += credit.Name + credit.JoinPhrase
 	}
 	if len(r.Releases) > 0 {
 		candidate.Album = r.Releases[0].Title
@@ -242,7 +243,9 @@ func waitForMusicBrainz(ctx context.Context) error {
 	return nil
 }
 
-func quoteQuery(s string) string { return `"` + strings.ReplaceAll(s, `"`, "") + `"` }
+func quoteQuery(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+}
 func errorText(err error) string {
 	if err == nil {
 		return ""

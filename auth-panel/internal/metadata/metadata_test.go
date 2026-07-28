@@ -2,6 +2,10 @@ package metadata
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -182,5 +186,35 @@ func TestOwnershipOfReadsUnixFileOwner(t *testing.T) {
 	}
 	if uid != int(stat.Uid) || gid != int(stat.Gid) {
 		t.Fatalf("ownershipOf() = %d:%d, want %d:%d", uid, gid, stat.Uid, stat.Gid)
+	}
+}
+
+func TestLookupEscapesMusicBrainzQueryAndKeepsAllArtistCredits(t *testing.T) {
+	var received url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received = r.URL.Query()
+		json.NewEncoder(w).Encode(map[string]any{"recordings": []any{map[string]any{
+			"id": "recording-id", "title": "A \"Song\"", "artist-credit": []any{
+				map[string]any{"name": "First", "joinphrase": " feat. "},
+				map[string]any{"name": "Second"},
+			},
+		}}})
+	}))
+	defer server.Close()
+	oldURL := musicBrainzURL
+	musicBrainzURL = server.URL
+	t.Cleanup(func() { musicBrainzURL = oldURL })
+
+	p := NewProcessor(nil, t.TempDir())
+	candidate, status, err := p.lookup(context.Background(), Track{Title: `A "Song"`, Artist: `Artist \ Name`})
+	if err != nil || status != "matched" {
+		t.Fatalf("lookup = (%#v, %q, %v), want match", candidate, status, err)
+	}
+	if got, want := candidate.Artist, "First feat. Second"; got != want {
+		t.Fatalf("candidate artist = %q, want %q", got, want)
+	}
+	query := received.Get("query")
+	if !strings.Contains(query, `recording:"A \"Song\""`) || !strings.Contains(query, `artist:"Artist \\ Name"`) {
+		t.Fatalf("MusicBrainz query = %q, want escaped title and artist", query)
 	}
 }
