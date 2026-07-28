@@ -221,6 +221,46 @@ func TestProcessorApplyRejectsSymlinkedParent(t *testing.T) {
 	}
 }
 
+func TestProcessorReprocessRejectsSymlinkedAudio(t *testing.T) {
+	musicDir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "track.mp3")
+	if err := os.WriteFile(target, []byte("audio"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(musicDir, "track.mp3")); err != nil {
+		t.Fatal(err)
+	}
+
+	p := NewProcessor(nil, musicDir)
+	if err := p.Reprocess(context.Background(), "track.mp3"); err == nil {
+		t.Fatal("Reprocess() accepted a symlinked audio file")
+	}
+}
+
+func TestOpenLibraryFileRejectsFIFOWithoutBlocking(t *testing.T) {
+	musicDir := t.TempDir()
+	if err := syscall.Mkfifo(filepath.Join(musicDir, "stream.mp3"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := NewProcessor(nil, musicDir)
+	done := make(chan error, 1)
+	go func() {
+		file, err := p.openLibraryFile("stream.mp3")
+		if file != nil {
+			file.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("openLibraryFile() accepted a FIFO")
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("openLibraryFile() blocked while opening a FIFO")
+	}
+}
+
 func mustStat(t *testing.T, path string) *syscall.Stat_t {
 	t.Helper()
 	info, err := os.Stat(path)

@@ -135,10 +135,12 @@ func (p *Processor) Scan(ctx context.Context) error {
 
 // Reprocess requests a fresh catalogue lookup without modifying the audio file.
 func (p *Processor) Reprocess(ctx context.Context, path string) error {
-	if filepath.IsAbs(path) || strings.Contains(path, "..") {
-		return fmt.Errorf("invalid file path")
+	file, err := p.openLibraryFile(path)
+	if err != nil {
+		return err
 	}
-	return p.process(ctx, path)
+	defer file.Close()
+	return p.processTrack(ctx, path, extractTrackFromFile(file, path))
 }
 
 // Apply writes explicitly reviewed tags to a known library file.
@@ -184,8 +186,58 @@ func (p *Processor) libraryFile(path string) (string, error) {
 	return file, nil
 }
 
+// openLibraryFile resolves every path component through an already-open
+// directory descriptor. O_NOFOLLOW on each open prevents a directory swap
+// from redirecting reprocessing outside the music library.
+func (p *Processor) openLibraryFile(path string) (*os.File, error) {
+	if filepath.IsAbs(path) {
+		return nil, fmt.Errorf("invalid file path")
+	}
+	root, err := filepath.Abs(p.musicDir)
+	if err != nil {
+		return nil, err
+	}
+	rel := filepath.Clean(filepath.FromSlash(path))
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return nil, fmt.Errorf("invalid file path")
+	}
+	fd, err := syscall.Open(root, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Split(rel, string(os.PathSeparator))
+	for i, part := range parts {
+		flags := syscall.O_RDONLY | syscall.O_NOFOLLOW | syscall.O_CLOEXEC
+		if i < len(parts)-1 {
+			flags |= syscall.O_DIRECTORY
+		} else {
+			// A FIFO would otherwise block here before fstat can reject it.
+			flags |= syscall.O_NONBLOCK
+		}
+		next, err := syscall.Openat(fd, part, flags, 0)
+		syscall.Close(fd)
+		if err != nil {
+			return nil, err
+		}
+		fd = next
+	}
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(fd, &stat); err != nil {
+		syscall.Close(fd)
+		return nil, err
+	}
+	if stat.Mode&syscall.S_IFMT != syscall.S_IFREG {
+		syscall.Close(fd)
+		return nil, fmt.Errorf("not a regular audio file")
+	}
+	return os.NewFile(uintptr(fd), filepath.Join(root, rel)), nil
+}
+
 func (p *Processor) process(ctx context.Context, path string) error {
-	track := extractTrack(filepath.Join(p.musicDir, filepath.FromSlash(path)))
+	return p.processTrack(ctx, path, extractTrack(filepath.Join(p.musicDir, filepath.FromSlash(path))))
+}
+
+func (p *Processor) processTrack(ctx context.Context, path string, track Track) error {
 	if track.Title == "" {
 		track = ParseFilename(path)
 	}
@@ -291,6 +343,18 @@ func errorText(err error) string {
 func extractTrack(path string) Track {
 	filenameTrack := ParseFilename(path)
 	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "json", path).Output()
+	return trackFromFFprobe(out, err, filenameTrack)
+}
+
+func extractTrackFromFile(file *os.File, path string) Track {
+	filenameTrack := ParseFilename(path)
+	cmd := exec.Command("ffprobe", "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "json", "pipe:3")
+	cmd.ExtraFiles = []*os.File{file}
+	out, err := cmd.Output()
+	return trackFromFFprobe(out, err, filenameTrack)
+}
+
+func trackFromFFprobe(out []byte, err error, filenameTrack Track) Track {
 	if err != nil {
 		return filenameTrack
 	}
