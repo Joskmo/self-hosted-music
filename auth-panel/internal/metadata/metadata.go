@@ -100,3 +100,26 @@ func normalized(s string) string {
 	}
 	return string(out)
 }
+
+// normalizeLookupTitle removes only known terminal decorations added by common
+// upload sources. It deliberately preserves the stored filename and original tags.
+func normalizeLookupTitle(title string) string {
+	title = strings.Join(strings.Fields(title), " ")
+	for {
+		open := strings.LastIndexAny(title, "([")
+		if open < 0 || len(title) < open+2 {
+			return title
+		}
+		close := title[len(title)-1]
+		if (title[open] == '(' && close != ')') || (title[open] == '[' && close != ']') {
+			return title
+		}
+		decoration := strings.ToLower(strings.TrimSpace(title[open+1 : len(title)-1]))
+		switch decoration {
+		case "official video", "official audio", "music video", "lyrics video", "lyric video", "visualizer", "hd", "hq", "4k":
+			title = strings.TrimSpace(title[:open])
+		default:
+			return title
+		}
+	}
+}

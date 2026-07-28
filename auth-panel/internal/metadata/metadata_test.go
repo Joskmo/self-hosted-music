@@ -122,6 +122,42 @@ func TestMergeTrackHintsUsesFilenameForMissingTags(t *testing.T) {
 	}
 }
 
+func TestNormalizeLookupTitleRemovesYouTubeDecorations(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"official video", "ПАЦАНЫ II (Official Video)", "ПАЦАНЫ II"},
+		{"official audio in brackets", "ПАЦАНЫ II [Official Audio]", "ПАЦАНЫ II"},
+		{"extra whitespace", "  ПАЦАНЫ II   (HD)  ", "ПАЦАНЫ II"},
+		{"musical content untouched", "Live at Wembley", "Live at Wembley"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeLookupTitle(tt.in); got != tt.want {
+				t.Fatalf("normalizeLookupTitle(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMusicBrainzHTTPClientUsesConfiguredProxy(t *testing.T) {
+	client := musicBrainzHTTPClient("http://host.docker.internal:10809")
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.Proxy == nil {
+		t.Fatal("configured MusicBrainz client must use an HTTP proxy transport")
+	}
+	req := httptest.NewRequest(http.MethodGet, "https://musicbrainz.org/ws/2/recording", nil)
+	proxy, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := proxy.String(), "http://host.docker.internal:10809"; got != want {
+		t.Fatalf("proxy = %q, want %q", got, want)
+	}
+}
+
 func TestHighConfidenceRequiresExactTitleAndArtist(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -306,6 +342,28 @@ func TestMetadataUpsertPreservesInitialOriginalValues(t *testing.T) {
 		strings.Contains(metadataUpsertSQL, "original_artist=EXCLUDED.original_artist") ||
 		strings.Contains(metadataUpsertSQL, "original_album=EXCLUDED.original_album") {
 		t.Fatal("reprocessing must not overwrite the initial original metadata audit snapshot")
+	}
+}
+
+func TestLookupNormalizesYouTubeTitleBeforeSearching(t *testing.T) {
+	var received url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received = r.URL.Query()
+		json.NewEncoder(w).Encode(map[string]any{"recordings": []any{map[string]any{"id": "recording-id", "title": "Пацаны II"}}})
+	}))
+	defer server.Close()
+	oldURL := musicBrainzURL
+	musicBrainzURL = server.URL
+	t.Cleanup(func() { musicBrainzURL = oldURL })
+
+	p := NewProcessor(nil, t.TempDir())
+	_, status, err := p.lookup(context.Background(), Track{Title: "ПАЦАНЫ II (Official Video)", Artist: "GONE.Fludd"})
+	if err != nil || status != "matched" {
+		t.Fatalf("lookup status = %q, error = %v, want match", status, err)
+	}
+	query := received.Get("query")
+	if strings.Contains(query, "Official Video") || !strings.Contains(query, `recording:"ПАЦАНЫ II"`) {
+		t.Fatalf("MusicBrainz query = %q, want normalized title", query)
 	}
 }
 

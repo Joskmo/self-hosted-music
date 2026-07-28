@@ -105,7 +105,17 @@ func unchangedSincePreviousScan(seen map[string]fileObservation, path string, cu
 }
 
 func NewProcessor(database *sql.DB, musicDir string) *Processor {
-	return &Processor{db: database, musicDir: musicDir, client: &http.Client{Timeout: 10 * time.Second}, seen: make(map[string]fileObservation)}
+	return &Processor{db: database, musicDir: musicDir, client: musicBrainzHTTPClient(os.Getenv("MUSICBRAINZ_PROXY_URL")), seen: make(map[string]fileObservation)}
+}
+
+// musicBrainzHTTPClient keeps the proxy scope limited to public metadata
+// lookups rather than changing networking for Navidrome, PostgreSQL or MeTube.
+func musicBrainzHTTPClient(proxyRaw string) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if proxy, err := url.Parse(proxyRaw); err == nil && proxy.Scheme != "" && proxy.Host != "" {
+		transport.Proxy = http.ProxyURL(proxy)
+	}
+	return &http.Client{Timeout: 10 * time.Second, Transport: transport}
 }
 
 // Scan discovers completed files. It intentionally does not alter audio tags;
@@ -277,9 +287,10 @@ func (p *Processor) lookup(ctx context.Context, track Track) (candidate Candidat
 	if strings.TrimSpace(track.Title) == "" {
 		return candidate, "no_match", nil
 	}
-	q := url.Values{"query": {"recording:" + quoteQuery(track.Title)}}
+	lookupTitle := normalizeLookupTitle(track.Title)
+	q := url.Values{"query": {"recording:" + quoteQuery(lookupTitle)}}
 	if track.Artist != "" {
-		q.Set("query", "recording:"+quoteQuery(track.Title)+" AND artist:"+quoteQuery(track.Artist))
+		q.Set("query", "recording:"+quoteQuery(lookupTitle)+" AND artist:"+quoteQuery(track.Artist))
 	}
 	if err := waitForMusicBrainz(ctx); err != nil {
 		return candidate, "unavailable", err
