@@ -22,16 +22,30 @@ services:
       - web
       - internal
 
+  youtube-proxy-bridge:
+    image: alpine/socat:latest
+    restart: unless-stopped
+    network_mode: host
+    command: TCP-LISTEN:10809,bind=172.18.0.1,reuseaddr,fork TCP:127.0.0.1:10808
+
   metube:
     image: ghcr.io/alexta69/metube:latest
     restart: unless-stopped
     environment:
       - UID=1000
       - GID=1000
+      - YTDL_OPTIONS={"proxy":"http://host.docker.internal:10809"}
+    extra_hosts:
+      - "host.docker.internal:172.18.0.1"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     volumes:
       - ./music:/downloads
     networks:
       - internal
+    depends_on:
+      - youtube-proxy-bridge
 
   auth-db:
     image: postgres:16-alpine
