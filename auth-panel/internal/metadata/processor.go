@@ -328,7 +328,7 @@ func (p *Processor) lookup(ctx context.Context, track Track) (candidate Candidat
 	if strings.TrimSpace(track.Title) == "" {
 		return candidate, "no_match", nil
 	}
-	lookupTitle := normalizeLookupTitle(track.Title)
+	lookupTitle := normalizeLookupTitleForArtist(track.Title, track.Artist)
 	q := url.Values{"query": {"recording:" + quoteQuery(lookupTitle)}}
 	if track.Artist != "" {
 		q.Set("query", "recording:"+quoteQuery(lookupTitle)+" AND artist:"+quoteQuery(track.Artist))

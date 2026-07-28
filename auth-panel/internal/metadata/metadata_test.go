@@ -367,6 +367,28 @@ func TestLookupNormalizesYouTubeTitleBeforeSearching(t *testing.T) {
 	}
 }
 
+func TestLookupStripsArtistRepeatedInYouTubeTitle(t *testing.T) {
+	var received url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received = r.URL.Query()
+		json.NewEncoder(w).Encode(map[string]any{"recordings": []any{map[string]any{"id": "recording-id", "title": "Пацаны II"}}})
+	}))
+	defer server.Close()
+	oldURL := musicBrainzURL
+	musicBrainzURL = server.URL
+	t.Cleanup(func() { musicBrainzURL = oldURL })
+
+	p := NewProcessor(nil, t.TempDir())
+	_, status, err := p.lookup(context.Background(), Track{Title: "GONE.Fludd — ПАЦАНЫ II (Official Video)", Artist: "GONE.Fludd"})
+	if err != nil || status != "matched" {
+		t.Fatalf("lookup status = %q, error = %v, want match", status, err)
+	}
+	query := received.Get("query")
+	if strings.Contains(query, "GONE.Fludd —") || !strings.Contains(query, `recording:"ПАЦАНЫ II"`) {
+		t.Fatalf("MusicBrainz query = %q, want title without repeated artist", query)
+	}
+}
+
 func TestLookupEscapesMusicBrainzQueryAndKeepsAllArtistCredits(t *testing.T) {
 	var received url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

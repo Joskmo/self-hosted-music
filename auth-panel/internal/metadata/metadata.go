@@ -123,3 +123,16 @@ func normalizeLookupTitle(title string) string {
 		}
 	}
 }
+
+// normalizeLookupTitleForArtist removes a repeated artist prefix only when it
+// exactly agrees with a separate artist tag. The original tags remain intact.
+func normalizeLookupTitleForArtist(title, artist string) string {
+	title = normalizeLookupTitle(title)
+	for _, separator := range []string{" — ", " – ", " - "} {
+		left, right, found := strings.Cut(title, separator)
+		if found && normalized(left) == normalized(artist) && strings.TrimSpace(right) != "" {
+			return strings.TrimSpace(right)
+		}
+	}
+	return title
+}
