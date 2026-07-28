@@ -120,10 +120,18 @@ func AdminMetadataApplyHandler(database *sql.DB, sessions *session.Store, proces
 			JSONError(w, "metadata write failed", http.StatusInternalServerError)
 			return
 		}
-		if _, err := database.Exec(`UPDATE music_metadata SET original_title=$1, original_artist=$2, original_album=$3, status='resolved', last_error='', updated_at=NOW() WHERE id=$4`, track.Title, track.Artist, track.Album, r.PathValue("id")); err != nil {
+		if err := markMetadataApplied(r.Context(), database, r.PathValue("id")); err != nil {
 			JSONError(w, "metadata update failed", http.StatusInternalServerError)
 			return
 		}
 		JSONOK(w)
 	}
+}
+
+// markMetadataApplied records completion without overwriting the tags captured
+// before review. The original values are an audit trail even after a deliberate
+// file rewrite by an administrator.
+func markMetadataApplied(ctx context.Context, database *sql.DB, id string) error {
+	_, err := database.ExecContext(ctx, `UPDATE music_metadata SET status='resolved', last_error='', updated_at=NOW() WHERE id=$1`, id)
+	return err
 }

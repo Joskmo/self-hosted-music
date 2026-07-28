@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,25 @@ import (
 	"auth-panel/internal/metadata"
 	"auth-panel/internal/session"
 )
+
+func TestMarkMetadataAppliedPreservesOriginalMetadata(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	mock.ExpectExec(`UPDATE music_metadata SET status='resolved', last_error='', updated_at=NOW\(\) WHERE id=\$1`).
+		WithArgs("metadata-id").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := markMetadataApplied(context.Background(), database, "metadata-id"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestAdminPageHandlerRejectsNonAdminSession(t *testing.T) {
 	database, mock, err := sqlmock.New()
