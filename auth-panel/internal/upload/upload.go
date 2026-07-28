@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+var runUnzip = func(zipPath, destination string) error {
+	return exec.Command("unzip", "-o", zipPath, "-d", destination).Run()
+}
+
 func SaveUploads(musicDir string, files []*multipart.FileHeader) ([]string, error) {
 	var saved []string
 	for _, fh := range files {
@@ -51,15 +55,17 @@ func SaveUploadedZip(musicDir string, fh *multipart.FileHeader) ([]string, error
 	}
 	dst.Close()
 
-	cmd := exec.Command("unzip", "-o", tmpZip, "-d", tmpDir)
-	if err := cmd.Run(); err != nil {
+	if err := runUnzip(tmpZip, tmpDir); err != nil {
 		return nil, fmt.Errorf("unzip: %w", err)
 	}
 
 	var saved []string
 	err = filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil {
 			return err
+		}
+		if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil
 		}
 		if !isAudioFile(info.Name()) {
 			return nil
