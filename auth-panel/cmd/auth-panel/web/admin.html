@@ -4,38 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Админ — Music Server</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 60px auto; padding: 0 20px; background: #f9fafb; }
-    h2 { color: #111827; }
-    button { padding: 10px 20px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; }
-    button:hover { background: #1d4ed8; }
-    button.secondary { background: #6b7280; }
-    button.secondary:hover { background: #4b5563; }
-    button.danger { background: #dc2626; }
-    button.danger:hover { background: #b91c1c; }
-    button.small { padding: 6px 12px; font-size: 13px; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; background: #fff; border-radius: 8px; overflow: hidden; }
-    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e5e7eb; }
-    th { background: #f3f4f6; }
-    .link { word-break: break-all; color: #2563eb; font-size: 13px; }
-    .error { color: #dc2626; background: #fef2f2; padding: 10px; border-radius: 6px; }
-    .success { color: #16a34a; background: #f0fdf4; padding: 10px; border-radius: 6px; }
-    .links { margin-top: 24px; font-size: 14px; }
-    .links a { color: #2563eb; text-decoration: none; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    .header a { color: #dc2626; text-decoration: none; font-size: 14px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #e5e7eb; color: #374151; }
-    .badge.admin { background: #dbeafe; color: #1e40af; }
-    section { margin-bottom: 40px; }
-  </style>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body class="app-page">
-  <div class="app-top header">
-    <span id="who"></span>
-    <a href="#" onclick="doLogout(); return false;">Выйти</a>
-  </div>
+  <header class="app-top">
+    <a class="app-brand" href="/upload"><i class="brand-mark">♪</i> Моя музыка</a>
+    <nav class="app-nav">
+      <a href="/upload">Загрузить</a>
+      <a href="/discover">Найти трек</a>
+      <a href="/metube">Скачать</a>
+      <a class="logout" href="#" onclick="doLogout(); return false;">Выйти</a>
+      <button class="theme-toggle" data-theme-toggle></button>
+    </nav>
+  </header>
+  <main class="app-main">
 
   <section>
     <h2>Инвайты</h2>
@@ -69,6 +51,7 @@
     <a href="/metube">Скачать с YouTube</a> &middot;
     <a href="{{NavidromeURL}}" target="_blank">Музыкальный сервер</a>
   </div>
+  </main>
 
   <script src="/assets/app.js"></script>
   <script>
