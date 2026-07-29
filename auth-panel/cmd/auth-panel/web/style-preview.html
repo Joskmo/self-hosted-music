@@ -13,20 +13,20 @@
       --font-ui: "DM Sans", Arial, sans-serif;
       --font-display: "Space Grotesk", Arial, sans-serif;
       --radius-sm: 10px; --radius: 16px; --radius-lg: 24px;
-      --accent: #b7c738; --accent-ink: #1b2204; --accent-soft: #e4e9ad;
+      --accent: #b7c738; --accent-ink: #1b2204; --accent-soft: #e4e9ad; --lilac:#8d73b5;
     }
-    html[data-palette="olive"] { --accent:#b7c738; --accent-ink:#1b2204; --accent-soft:#e4e9ad; --signal:#d9694a; }
+    html[data-palette="olive"] { --accent:#b7c738; --accent-ink:#1b2204; --accent-soft:#e4e9ad; --signal:#d9694a; --lilac:#ab8add; }
     html[data-palette="ember"] { --accent:#e25d3c; --accent-ink:#27100b; --accent-soft:#ffd7ca; --signal:#9db741; }
     html[data-palette="cobalt"] { --accent:#5475e7; --accent-ink:#0b1334; --accent-soft:#d9e1ff; --signal:#d26445; }
     html[data-theme="dark"] {
       --page:#111210; --panel:#1a1c18; --panel-2:#22251f; --line:#383b33;
       --ink:#f3f2eb; --muted:#aeb2a5; --quiet:#777c70; --field:#292c26;
-      --art-1:#d9ac37; --art-2:#345d5b; --art-3:#bd6048; --art-4:#704d89;
+      --art-1:#d9ac37; --art-2:#345d5b; --art-3:#bd6048; --art-4:var(--lilac);
     }
     html[data-theme="light"] {
       --page:#f5f4ed; --panel:#ffffff; --panel-2:#edede6; --line:#d9dad1;
       --ink:#1d211b; --muted:#687064; --quiet:#92978d; --field:#f1f1ea;
-      --art-1:#d5a21c; --art-2:#467170; --art-3:#d1674b; --art-4:#765d91;
+      --art-1:#d5a21c; --art-2:#467170; --art-3:#d1674b; --art-4:var(--lilac);
     }
     * { box-sizing:border-box; }
     body { margin:0; color:var(--ink); background:var(--page); font:15px/1.4 var(--font-ui); transition:background .25s,color .25s; }
@@ -46,7 +46,7 @@
     .palette strong { font:700 17px/1 var(--font-display); letter-spacing:-.025em; }
     .palette small { display:block; margin-top:7px; color:var(--muted); }
     .chips { display:flex; gap:5px; } .chip { width:17px; height:17px; border-radius:50%; border:1px solid rgba(0,0,0,.13); }
-    .olive .chip:nth-child(1){background:#b7c738}.olive .chip:nth-child(2){background:#1b2204}.olive .chip:nth-child(3){background:#d9694a}
+    .olive .chip:nth-child(1){background:#b7c738}.olive .chip:nth-child(2){background:#1b2204}.olive .chip:nth-child(3){background:#ab8add}.olive .chip:nth-child(4){background:#d9694a}
     .ember .chip:nth-child(1){background:#e25d3c}.ember .chip:nth-child(2){background:#27100b}.ember .chip:nth-child(3){background:#9db741}
     .cobalt .chip:nth-child(1){background:#5475e7}.cobalt .chip:nth-child(2){background:#0b1334}.cobalt .chip:nth-child(3){background:#d26445}
     .frame { max-width:1360px; margin:0 auto 34px; padding:0 32px; }
@@ -82,7 +82,7 @@
     </div>
   </header>
   <section class="chooser" aria-label="Выбор палитры">
-    <button class="palette olive" type="button" data-palette-button="olive" aria-pressed="true"><span class="palette-row"><strong>Плёнка</strong><span class="chips"><i class="chip"></i><i class="chip"></i><i class="chip"></i></span></span><small>авокадо, уголь, тёплый сигнал</small></button>
+    <button class="palette olive" type="button" data-palette-button="olive" aria-pressed="true"><span class="palette-row"><strong>Плёнка</strong><span class="chips"><i class="chip"></i><i class="chip"></i><i class="chip"></i><i class="chip"></i></span></span><small>авокадо, уголь, сирень, тёплый сигнал</small></button>
     <button class="palette ember" type="button" data-palette-button="ember" aria-pressed="false"><span class="palette-row"><strong>Сцена</strong><span class="chips"><i class="chip"></i><i class="chip"></i><i class="chip"></i></span></span><small>вермильон, графит, травяной свет</small></button>
     <button class="palette cobalt" type="button" data-palette-button="cobalt" aria-pressed="false"><span class="palette-row"><strong>Ночная волна</strong><span class="chips"><i class="chip"></i><i class="chip"></i><i class="chip"></i></span></span><small>ультрамарин, чернильный, медный</small></button>
   </section>
