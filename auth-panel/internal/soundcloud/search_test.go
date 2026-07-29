@@ -8,29 +8,35 @@ import (
 	"testing"
 )
 
-func TestClientSearchReturnsPublicTrackResults(t *testing.T) {
+func TestClientSearchTracksUsesAPIv2AndPreservesCyrillic(t *testing.T) {
+	const clientID = "0123456789abcdefghijklmnopqrstuv"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got, want := r.URL.Path, "/search/sounds"; got != want {
-			t.Fatalf("path = %q, want %q", got, want)
+		switch r.URL.Path {
+		case "/":
+			_, _ = w.Write([]byte(`<script src="/assets/app.js"></script>`))
+		case "/assets/app.js":
+			_, _ = w.Write([]byte(`client_id: "` + clientID + `"`))
+		case "/search/tracks":
+			if got, want := r.URL.Query().Get("q"), "ДРИПСЭТ"; got != want {
+				t.Fatalf("q = %q, want %q", got, want)
+			}
+			if got := r.URL.Query().Get("client_id"); got != clientID {
+				t.Fatalf("client_id was not obtained from SoundCloud public assets")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"collection":[{"title":"ДРИПСЭТ","permalink_url":"https://soundcloud.com/gonefludd/dripset","user":{"username":"GONE.Fludd"}}]}`))
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
-		if got, want := r.URL.Query().Get("q"), "fred again"; got != want {
-			t.Fatalf("q = %q, want %q", got, want)
-		}
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte(`<!doctype html><main><li><a href="/fredagain/track-one">Track &amp; One</a><a href="/fredagain">Fred again..</a><span>3:42</span></li><li><a href="https://evil.example/track">Ignore this</a></li></main>`))
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, server.Client())
-	results, err := client.Search(context.Background(), " fred again ")
+	results, err := NewClient(server.URL, server.Client()).Search(context.Background(), " ДРИПСЭТ ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 1 {
-		t.Fatalf("results = %#v, want one result", results)
-	}
-	if got, want := results[0], (Track{Title: "Track & One", Artist: "Fred again..", URL: "https://soundcloud.com/fredagain/track-one", Type: Tracks}); got != want {
-		t.Fatalf("result = %#v, want %#v", got, want)
+	if got, want := results, []Track{{Title: "ДРИПСЭТ", Artist: "GONE.Fludd", URL: "https://soundcloud.com/gonefludd/dripset", Type: Tracks}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("results = %#v, want %#v", got, want)
 	}
 }
 

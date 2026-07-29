@@ -27,7 +27,7 @@ type collectionResponse struct {
 	} `json:"collection"`
 }
 
-func (c *Client) searchCollections(ctx context.Context, query string, mode Mode) ([]Track, error) {
+func (c *Client) searchAPI(ctx context.Context, query string, mode Mode) ([]Track, error) {
 	clientID, err := c.publicClientID(ctx)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,11 @@ func (c *Client) searchCollections(ctx context.Context, query string, mode Mode)
 	results := make([]Track, 0, len(payload.Collection))
 	seen := make(map[string]struct{})
 	for _, item := range payload.Collection {
-		if item.Title == "" || item.User.Username == "" || !isCanonicalCollectionURL(item.PermalinkURL) {
+		validURL := isCanonicalCollectionURL(item.PermalinkURL)
+		if mode == Tracks {
+			validURL = isCanonicalTrackURL(item.PermalinkURL)
+		}
+		if item.Title == "" || item.User.Username == "" || !validURL {
 			continue
 		}
 		if _, exists := seen[item.PermalinkURL]; exists {
@@ -140,6 +144,14 @@ func (c *Client) getPage(ctx context.Context, rawURL string) (string, error) {
 		return "", errors.New("слишком большой ответ SoundCloud")
 	}
 	return string(body), nil
+}
+
+func isCanonicalTrackURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || (u.Host != "soundcloud.com" && u.Host != "www.soundcloud.com") {
+		return false
+	}
+	return isTrackPath(u.Path)
 }
 
 func isCanonicalCollectionURL(raw string) bool {

@@ -98,8 +98,11 @@ func (c *Client) Search(ctx context.Context, query string, requestedMode ...Mode
 		return nil, errors.New("слишком длинный запрос")
 	}
 
-	if mode == Albums || mode == Playlists {
-		return c.searchCollections(ctx, query, mode)
+	if mode == Everything {
+		return c.searchAPI(ctx, query, Tracks)
+	}
+	if mode == Tracks || mode == Albums || mode == Playlists {
+		return c.searchAPI(ctx, query, mode)
 	}
 
 	endpoint, err := url.Parse(c.baseURL + mode.endpointPath())
