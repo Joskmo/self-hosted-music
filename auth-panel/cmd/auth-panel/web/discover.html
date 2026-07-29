@@ -1,1 +1,199 @@
-<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Найти трек — Моя музыка</title><link rel="stylesheet" href="/assets/app.css"></head><body class="app-page"><header class="app-top"><a class="app-brand" href="/upload"><i class="brand-mark">♪</i> Моя музыка</a><nav class="app-nav"><a href="/upload">Библиотека</a><a href="/metube">Скачать</a><button class="theme-toggle" data-theme-toggle></button></nav></header><main class="app-main"><div class="page-head"><div><p class="eyebrow">SoundCloud</p><h1 class="page-title">Найти трек</h1><p class="lead">Найди музыку и добавь выбранный трек в существующую очередь одним нажатием.</p></div></div><form class="search-form" id="searchForm"><input id="query" type="search" maxlength="160" autocomplete="off" placeholder="Артист или название трека" required autofocus><button id="searchButton">Найти</button></form><p class="hint">Используется публичная выдача SoundCloud — без аккаунта и платного API.</p><div id="message"></div><div id="results"></div><p class="notice">Добавляй только свою музыку, треки с разрешённым скачиванием или контент, на который у тебя есть права.</p></main><script src="/assets/app.js"></script><script>const form=document.getElementById('searchForm'),query=document.getElementById('query'),results=document.getElementById('results'),message=document.getElementById('message'),searchButton=document.getElementById('searchButton');function setMessage(t,k=''){message.className=k;message.textContent=t}function render(items){results.replaceChildren();if(!items.length){results.innerHTML='<p class="hint">Ничего не нашли. Попробуй другое название.</p>';return}for(const item of items){const row=document.createElement('article');row.className='result';const info=document.createElement('div');info.innerHTML='<div class="title"></div><div class="artist"></div>';info.querySelector('.title').textContent=item.title;info.querySelector('.artist').textContent=item.artist;const add=document.createElement('button');add.textContent='Добавить MP3';add.onclick=()=>addTrack(item.url,add);row.append(info,add);results.append(row)}}async function addTrack(url,button){button.disabled=true;button.textContent='Добавляем…';try{const r=await fetch('/api/discover/soundcloud/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})}),j=await r.json();if(!r.ok)throw Error(j.error||'Не удалось добавить в очередь');button.textContent='В очереди';setMessage('Трек добавлен в очередь. После обработки он появится в библиотеке.','success')}catch(e){button.disabled=false;button.textContent='Добавить MP3';setMessage(e.message,'error')}}form.addEventListener('submit',async e=>{e.preventDefault();const q=query.value.trim();if(!q)return;searchButton.disabled=true;results.replaceChildren();setMessage('');try{const r=await fetch('/api/discover/soundcloud?q='+encodeURIComponent(q)),j=await r.json();if(!r.ok)throw Error(j.error||'Поиск сейчас недоступен');render(j)}catch(e){setMessage(e.message,'error')}finally{searchButton.disabled=false}})</script></body></html>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Найти трек — Моя музыка</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body class="app-page">
+  <header class="app-top">
+    <a class="app-brand" href="/upload"><i class="brand-mark">♪</i> Моя музыка</a>
+    <nav class="app-nav">
+      <a href="/upload">Библиотека</a>
+      <a href="/metube">Скачать</a>
+      <button class="theme-toggle" data-theme-toggle></button>
+    </nav>
+  </header>
+  <main class="app-main">
+    <div class="page-head">
+      <div>
+        <p class="eyebrow">SoundCloud</p>
+        <h1 class="page-title">Найти трек</h1>
+        <p class="lead">Найди музыку, предпрослушай и добавь выбранный трек в очередь.</p>
+      </div>
+    </div>
+    <form class="search-form" id="searchForm">
+      <input id="query" type="search" maxlength="160" autocomplete="off" placeholder="Артист или название трека" required autofocus>
+      <button id="searchButton">Найти</button>
+    </form>
+    <p class="hint">Используется публичная выдача SoundCloud — без аккаунта и платного API.</p>
+    <div id="message" aria-live="polite"></div>
+    <div id="results"></div>
+    <p class="notice">При нажатии «Предпрослушать» SoundCloud player откроется ниже. Если воспроизведение не начинается в течение 12 секунд, трек автоматически добавляется в очередь скачивания.</p>
+    <p class="notice">Добавляй только свою музыку, треки с разрешённым скачиванием или контент, на который у тебя есть права.</p>
+  </main>
+  <script src="/assets/app.js"></script>
+  <script src="https://w.soundcloud.com/player/api.js" async></script>
+  <script>
+    const form = document.getElementById('searchForm');
+    const query = document.getElementById('query');
+    const results = document.getElementById('results');
+    const message = document.getElementById('message');
+    const searchButton = document.getElementById('searchButton');
+    let activePreview = null;
+
+    function setMessage(text, kind = '') {
+      message.className = kind;
+      message.textContent = text;
+    }
+
+    async function addToQueue(url, button, successText = 'Трек добавлен в очередь. Он появится в библиотеке после обработки.') {
+      if (button.dataset.queued === 'true') return true;
+      button.disabled = true;
+      try {
+        const response = await fetch('/api/discover/soundcloud/add', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url})
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || 'Не удалось добавить трек');
+        button.dataset.queued = 'true';
+        button.textContent = 'В очереди';
+        setMessage(successText, 'success');
+        return true;
+      } catch (error) {
+        button.disabled = false;
+        setMessage(error.message, 'error');
+        return false;
+      }
+    }
+
+    async function previewFallback(url, previewButton, addButton) {
+      if (previewButton.dataset.fallback === 'true') return;
+      previewButton.dataset.fallback = 'true';
+      previewButton.textContent = 'Предпрослушивание недоступно — добавляем…';
+      const queued = await addToQueue(url, addButton, 'Предпрослушивание недоступно — трек добавлен в очередь скачивания.');
+      if (queued) previewButton.textContent = 'Добавлено в очередь';
+      else {
+        previewButton.disabled = false;
+        previewButton.textContent = 'Предпрослушать';
+        delete previewButton.dataset.fallback;
+      }
+    }
+
+    function stopActivePreview() {
+      if (!activePreview) return;
+      clearTimeout(activePreview.timeout);
+      activePreview.slot.replaceChildren();
+      activePreview.button.disabled = false;
+      activePreview.button.textContent = 'Предпрослушать';
+      activePreview = null;
+    }
+
+    function startPreview(item, slot, previewButton, addButton) {
+      stopActivePreview();
+      previewButton.disabled = true;
+      previewButton.textContent = 'Загружаем плеер…';
+      const iframe = document.createElement('iframe');
+      iframe.title = `Предпрослушивание: ${item.title}`;
+      iframe.loading = 'lazy';
+      iframe.allow = 'autoplay';
+      iframe.width = '100%';
+      iframe.height = '166';
+      iframe.frameBorder = '0';
+      iframe.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(item.url) + '&auto_play=true&show_artwork=true&show_user=true&sharing=true';
+      slot.replaceChildren(iframe);
+
+      const preview = {slot, button: previewButton, timeout: null};
+      activePreview = preview;
+      preview.timeout = setTimeout(() => {
+        if (activePreview === preview) previewFallback(item.url, previewButton, addButton);
+      }, 12000);
+      iframe.addEventListener('error', () => previewFallback(item.url, previewButton, addButton), {once: true});
+
+      const connectWidget = () => {
+        if (!window.SC || !window.SC.Widget || activePreview !== preview) return;
+        const widget = window.SC.Widget(iframe);
+        widget.bind(window.SC.Widget.Events.READY, () => {
+          previewButton.textContent = 'Предпрослушивание…';
+          widget.play();
+        });
+        widget.bind(window.SC.Widget.Events.PLAY, () => {
+          clearTimeout(preview.timeout);
+          previewButton.disabled = false;
+          previewButton.textContent = 'Предпрослушивается';
+        });
+      };
+      if (window.SC && window.SC.Widget) connectWidget();
+      else window.addEventListener('load', connectWidget, {once: true});
+    }
+
+    function render(items) {
+      stopActivePreview();
+      results.replaceChildren();
+      if (!items.length) {
+        const empty = document.createElement('p');
+        empty.className = 'hint';
+        empty.textContent = 'Ничего не нашли. Попробуй другое название.';
+        results.append(empty);
+        return;
+      }
+      for (const item of items) {
+        const row = document.createElement('article');
+        row.className = 'result';
+        const info = document.createElement('div');
+        const title = document.createElement('div');
+        title.className = 'title';
+        title.textContent = item.title;
+        const artist = document.createElement('div');
+        artist.className = 'artist';
+        artist.textContent = item.artist;
+        info.append(title, artist);
+
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+        const preview = document.createElement('button');
+        preview.type = 'button';
+        preview.textContent = 'Предпрослушать';
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.textContent = 'Добавить MP3';
+        const link = document.createElement('a');
+        link.href = item.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Открыть SoundCloud';
+        actions.append(preview, add, link);
+        const player = document.createElement('div');
+        player.className = 'soundcloud-preview';
+        preview.addEventListener('click', () => startPreview(item, player, preview, add));
+        add.addEventListener('click', () => addToQueue(item.url, add));
+        row.append(info, actions, player);
+        results.append(row);
+      }
+    }
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const value = query.value.trim();
+      if (!value) return;
+      searchButton.disabled = true;
+      setMessage('Ищем в SoundCloud…');
+      try {
+        const response = await fetch('/api/discover/soundcloud?q=' + encodeURIComponent(value));
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || 'Поиск сейчас недоступен');
+        render(body);
+        setMessage('');
+      } catch (error) {
+        results.replaceChildren();
+        setMessage(error.message, 'error');
+      } finally {
+        searchButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

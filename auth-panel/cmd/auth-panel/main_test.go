@@ -28,6 +28,17 @@ func TestMusicServerLinksUsePublicConfiguredURL(t *testing.T) {
 	}
 }
 
+func TestDiscoverTemplateProvidesSoundCloudPreviewWithDownloadFallback(t *testing.T) {
+	handlers.InitWebFS(webFiles, "web")
+	rr := httptest.NewRecorder()
+	handlers.RenderTemplate(rr, "discover.html", nil)
+	body := rr.Body.String()
+	for _, want := range []string{"w.soundcloud.com/player/api.js", "SC.Widget", "auto_play=true", "previewFallback"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("discover template is missing preview capability %q", want)
+		}
+	}
+}
 func TestAdminTemplateDoesNotInterpolateUserFieldsIntoHTML(t *testing.T) {
 	handlers.InitWebFS(webFiles, "web")
 	rr := httptest.NewRecorder()
