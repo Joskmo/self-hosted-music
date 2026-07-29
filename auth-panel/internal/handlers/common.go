@@ -21,6 +21,11 @@ func InitWebFS(e embed.FS, path string) {
 	webFS = sub
 }
 
+// StaticHandler serves only files embedded under cmd/auth-panel/web.
+func StaticHandler() http.Handler {
+	return http.FileServer(http.FS(webFS))
+}
+
 func JSONOK(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})

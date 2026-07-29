@@ -61,6 +61,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /assets/", http.StripPrefix("/assets/", handlers.StaticHandler()))
 
 	stylePreviewDomain := os.Getenv("STYLE_PREVIEW_DOMAIN")
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

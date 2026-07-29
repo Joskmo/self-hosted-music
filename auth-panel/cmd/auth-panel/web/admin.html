@@ -29,9 +29,10 @@
     .badge.admin { background: #dbeafe; color: #1e40af; }
     section { margin-bottom: 40px; }
   </style>
+  <link rel="stylesheet" href="/assets/app.css">
 </head>
-<body>
-  <div class="header">
+<body class="app-page">
+  <div class="app-top header">
     <span id="who"></span>
     <a href="#" onclick="doLogout(); return false;">Выйти</a>
   </div>
@@ -69,6 +70,7 @@
     <a href="{{NavidromeURL}}" target="_blank">Музыкальный сервер</a>
   </div>
 
+  <script src="/assets/app.js"></script>
   <script>
     let currentUser = '';
 
