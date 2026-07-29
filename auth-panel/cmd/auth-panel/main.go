@@ -47,6 +47,10 @@ func main() {
 	metube.Init()
 	soundCloudClient := soundcloud.NewClient("https://soundcloud.com", soundCloudHTTPClient())
 	meTubeClient := metube.NewClient(os.Getenv("METUBE_URL"), nil)
+	authPanelOrigin := os.Getenv("AUTH_PANEL_ORIGIN")
+	if parsed, err := url.Parse(authPanelOrigin); err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		log.Fatal("AUTH_PANEL_ORIGIN must be a canonical HTTPS origin")
+	}
 
 	adminUser := os.Getenv("NAVIDROME_ADMIN_USER")
 	if adminUser == "" {
@@ -83,7 +87,7 @@ func main() {
 	mux.HandleFunc("POST /api/upload", handlers.UploadHandler(sessions))
 	mux.HandleFunc("POST /api/upload/zip", handlers.UploadZipHandler(sessions))
 	mux.HandleFunc("GET /api/discover/soundcloud", handlers.SoundCloudSearchHandler(sessions, soundCloudClient))
-	mux.HandleFunc("POST /api/discover/soundcloud/add", handlers.SoundCloudAddHandler(sessions, meTubeClient))
+	mux.HandleFunc("POST /api/discover/soundcloud/add", handlers.SoundCloudAddHandler(sessions, meTubeClient, authPanelOrigin))
 	mux.HandleFunc("/metube/", func(w http.ResponseWriter, r *http.Request) {
 		metube.Router(w, r, sessions)
 	})

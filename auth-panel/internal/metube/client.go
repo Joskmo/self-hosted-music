@@ -73,7 +73,7 @@ func isSoundCloudURL(raw string) bool {
 	if err != nil || u.Scheme != "https" || u.Port() != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 		return false
 	}
-	host := strings.ToLower(u.Hostname())
+	host := strings.ToLower(u.Host)
 	if host != "soundcloud.com" && host != "www.soundcloud.com" {
 		return false
 	}

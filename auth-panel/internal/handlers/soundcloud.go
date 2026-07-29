@@ -27,21 +27,22 @@ func SoundCloudDiscoverPageHandler(w http.ResponseWriter, r *http.Request, sessi
 	RenderTemplate(w, "discover.html", nil)
 }
 
-func requireSameOrigin(w http.ResponseWriter, r *http.Request) bool {
-	origin, err := url.Parse(r.Header.Get("Origin"))
-	if err != nil || origin.Scheme == "" || origin.Host == "" || origin.Host != r.Host || (origin.Scheme != "https" && origin.Scheme != "http") {
+func requireSameOrigin(w http.ResponseWriter, r *http.Request, allowedOrigin string) bool {
+	allowed, allowedErr := url.Parse(allowedOrigin)
+	origin, originErr := url.Parse(r.Header.Get("Origin"))
+	if allowedErr != nil || allowed.Scheme == "" || allowed.Host == "" || originErr != nil || origin.Scheme != allowed.Scheme || origin.Host != allowed.Host || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" {
 		JSONError(w, "недопустимый источник запроса", http.StatusForbidden)
 		return false
 	}
 	return true
 }
 
-func SoundCloudAddHandler(sessions *session.Store, enqueuer SoundCloudEnqueuer) http.HandlerFunc {
+func SoundCloudAddHandler(sessions *session.Store, enqueuer SoundCloudEnqueuer, allowedOrigin string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !RequireNavidromeAuth(w, r, sessions) {
 			return
 		}
-		if !requireSameOrigin(w, r) {
+		if !requireSameOrigin(w, r, allowedOrigin) {
 			return
 		}
 		var body struct {

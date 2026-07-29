@@ -60,7 +60,7 @@ func TestSoundCloudAddHandlerQueuesResultForAuthorizedSession(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
 	rr := httptest.NewRecorder()
 
-	SoundCloudAddHandler(sessions, enqueuer)(rr, req)
+	SoundCloudAddHandler(sessions, enqueuer, "http://example.com")(rr, req)
 
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusAccepted)
@@ -70,6 +70,17 @@ func TestSoundCloudAddHandlerQueuesResultForAuthorizedSession(t *testing.T) {
 	}
 }
 
+func TestRequireSameOriginRejectsSameHostDifferentScheme(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://music.example.test/api/discover/soundcloud/add", nil)
+	req.Header.Set("Origin", "http://music.example.test")
+	rr := httptest.NewRecorder()
+	if requireSameOrigin(rr, req, "https://music.example.test") {
+		t.Fatal("origin with a different scheme must be rejected")
+	}
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusForbidden)
+	}
+}
 func TestSoundCloudAddHandlerRejectsCrossOriginRequest(t *testing.T) {
 	sessions := session.New()
 	token := sessions.Create("member")
@@ -79,7 +90,7 @@ func TestSoundCloudAddHandlerRejectsCrossOriginRequest(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
 	rr := httptest.NewRecorder()
 
-	SoundCloudAddHandler(sessions, enqueuer)(rr, req)
+	SoundCloudAddHandler(sessions, enqueuer, "http://example.com")(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusForbidden)
 	}
@@ -97,7 +108,7 @@ func TestSoundCloudAddHandlerRejectsTrailingJSON(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
 	rr := httptest.NewRecorder()
 
-	SoundCloudAddHandler(sessions, enqueuer)(rr, req)
+	SoundCloudAddHandler(sessions, enqueuer, "http://example.com")(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
 	}

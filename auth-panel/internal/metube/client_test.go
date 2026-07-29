@@ -60,6 +60,7 @@ func TestClientAddAudioRejectsRedirect(t *testing.T) {
 func TestIsSoundCloudURLRejectsNonCanonicalURLs(t *testing.T) {
 	for _, raw := range []string{
 		"https://soundcloud.com:8443/artist/track",
+		"https://soundcloud.com:/artist/track",
 		"https://soundcloud.com/artist/track?utm_source=test",
 		"https://soundcloud.com/artist/track#fragment",
 	} {
