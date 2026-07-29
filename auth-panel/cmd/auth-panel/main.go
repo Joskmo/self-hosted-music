@@ -62,7 +62,14 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/", indexHandler(sessions))
+	stylePreviewDomain := os.Getenv("STYLE_PREVIEW_DOMAIN")
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && stylePreviewDomain != "" && r.Host == stylePreviewDomain {
+			handlers.RenderTemplate(w, "style-preview.html", nil)
+			return
+		}
+		indexHandler(sessions)(w, r)
+	})
 	mux.HandleFunc("GET /login", handlers.LoginPageHandler)
 	mux.HandleFunc("POST /api/login", handlers.LoginHandler(database, sessions))
 	mux.HandleFunc("GET /register", handlers.RegisterPageHandler)

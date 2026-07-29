@@ -77,6 +77,7 @@ services:
       MUSIC_DIR: /music
       METUBE_URL: http://metube:8081
       AUTH_PANEL_ORIGIN: https://${AUTH_PANEL_DOMAIN}
+      STYLE_PREVIEW_DOMAIN: ${STYLE_PREVIEW_DOMAIN:-music-style.jos-dev.ru}
       # Public SoundCloud search uses the same outbound proxy as metadata lookups.
       SOUNDCLOUD_PROXY_URL: http://host.docker.internal:10809
       # Only public MusicBrainz lookups use the existing host proxy.
@@ -90,6 +91,10 @@ services:
       - "traefik.http.routers.auth-panel.rule=Host(`${AUTH_PANEL_DOMAIN}`)"
       - "traefik.http.routers.auth-panel.entrypoints=websecure"
       - "traefik.http.routers.auth-panel.tls=true"
+      - "traefik.http.routers.style-preview.rule=Host(`music-style.jos-dev.ru`)"
+      - "traefik.http.routers.style-preview.entrypoints=websecure"
+      - "traefik.http.routers.style-preview.tls=true"
+      - "traefik.http.routers.style-preview.service=auth-panel"
       - "traefik.http.services.auth-panel.loadbalancer.server.port=3000"
     networks:
       - web
