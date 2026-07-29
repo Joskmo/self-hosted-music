@@ -105,9 +105,17 @@ func SessionMeHandler(database *sql.DB, sessions *session.Store) http.HandlerFun
 	}
 }
 
-func RegisterPageHandler(w http.ResponseWriter, r *http.Request) {
-	code := r.URL.Query().Get("invite")
-	RenderTemplate(w, "register.html", map[string]any{"InviteCode": code})
+func RegisterPageHandler(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		code := r.URL.Query().Get("invite")
+		var valid bool
+		if code == "" || database.QueryRow("SELECT EXISTS(SELECT 1 FROM invites WHERE code = $1 AND used = FALSE)", code).Scan(&valid) != nil || !valid {
+			w.WriteHeader(http.StatusGone)
+			RenderTemplate(w, "invite-invalid.html", nil)
+			return
+		}
+		RenderTemplate(w, "register.html", map[string]any{"InviteCode": code})
+	}
 }
 
 func RegisterHandler(database *sql.DB, sessions *session.Store) http.HandlerFunc {

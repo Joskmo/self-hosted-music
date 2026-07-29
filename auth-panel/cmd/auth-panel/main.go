@@ -73,7 +73,7 @@ func main() {
 	})
 	mux.HandleFunc("GET /login", handlers.LoginPageHandler)
 	mux.HandleFunc("POST /api/login", handlers.LoginHandler(database, sessions))
-	mux.HandleFunc("GET /register", handlers.RegisterPageHandler)
+	mux.HandleFunc("GET /register", handlers.RegisterPageHandler(database))
 	mux.HandleFunc("POST /api/register", handlers.RegisterHandler(database, sessions))
 	mux.HandleFunc("GET /admin", adminPageHandler(database, sessions))
 	mux.HandleFunc("GET /api/admin/invites", handlers.AdminInvitesHandler(database, sessions))
