@@ -36,7 +36,7 @@ func (c *Client) AddAudio(ctx context.Context, sourceURL string) error {
 	payload := map[string]any{
 		"url": sourceURL, "download_type": "audio", "codec": "auto", "format": "mp3", "quality": "best",
 		"folder": "", "custom_name_prefix": "", "playlist_item_limit": 0, "auto_start": true,
-		"split_by_chapters": false, "chapter_template": "", "subtitle_language": "", "subtitle_mode": "",
+		"split_by_chapters": false, "chapter_template": "",
 		"ytdl_options_presets": []string{}, "ytdl_options_overrides": "",
 	}
 	body, err := json.Marshal(payload)

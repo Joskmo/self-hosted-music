@@ -31,6 +31,11 @@ func TestClientAddAudioSubmitsFixedSafePayload(t *testing.T) {
 				t.Fatalf("%s = %v, want %v", field, got, want)
 			}
 		}
+		for _, forbidden := range []string{"subtitle_language", "subtitle_mode"} {
+			if _, exists := body[forbidden]; exists {
+				t.Fatalf("%s must be omitted so MeTube can apply its valid default", forbidden)
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
