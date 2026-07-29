@@ -87,7 +87,7 @@ func main() {
 	mux.HandleFunc("PUT /api/admin/metadata/{id}", handlers.AdminMetadataUpdateHandler(database, sessions))
 	mux.HandleFunc("POST /api/admin/metadata/{id}/reprocess", handlers.AdminMetadataReprocessHandler(database, sessions, metadataProcessor))
 	mux.HandleFunc("POST /api/admin/metadata/{id}/apply", handlers.AdminMetadataApplyHandler(database, sessions, metadataProcessor))
-	mux.HandleFunc("GET /upload", handlers.UploadPageHandler)
+	mux.HandleFunc("GET /upload", handlers.UploadPageHandler(sessions))
 	mux.HandleFunc("GET /discover", func(w http.ResponseWriter, r *http.Request) {
 		handlers.SoundCloudDiscoverPageHandler(w, r, sessions)
 	})

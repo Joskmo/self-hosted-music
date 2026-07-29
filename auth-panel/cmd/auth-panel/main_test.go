@@ -28,6 +28,27 @@ func TestMusicServerLinksUsePublicConfiguredURL(t *testing.T) {
 	}
 }
 
+func TestDiscoverActionsHaveVisibleSpacing(t *testing.T) {
+	css, err := webFiles.ReadFile("web/app.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), ".actions{display:flex;align-items:center;gap:8px;") {
+		t.Fatal("SoundCloud result actions must use an 8px visual gap")
+	}
+}
+func TestDiscoverTemplateOffersCollectionSearchModes(t *testing.T) {
+	handlers.InitWebFS(webFiles, "web")
+	rr := httptest.NewRecorder()
+	handlers.RenderTemplate(rr, "discover.html", nil)
+	body := rr.Body.String()
+	for _, want := range []string{`data-mode="everything"`, `data-mode="tracks"`, `data-mode="albums"`, `data-mode="playlists"`, "Подтвердить загрузку", "mode=", "collection"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("discover template is missing collection search UI %q", want)
+		}
+	}
+}
+
 func TestDiscoverTemplateProvidesSoundCloudPreviewWithDownloadFallback(t *testing.T) {
 	handlers.InitWebFS(webFiles, "web")
 	rr := httptest.NewRecorder()

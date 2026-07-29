@@ -13,7 +13,7 @@ import (
 )
 
 type SoundCloudSearcher interface {
-	Search(context.Context, string) ([]soundcloud.Track, error)
+	Search(context.Context, string, ...soundcloud.Mode) ([]soundcloud.Track, error)
 }
 
 type SoundCloudEnqueuer interface {
@@ -73,7 +73,12 @@ func SoundCloudSearchHandler(sessions *session.Store, searcher SoundCloudSearche
 		if !RequireNavidromeAuth(w, r, sessions) {
 			return
 		}
-		results, err := searcher.Search(r.Context(), r.URL.Query().Get("q"))
+		mode, err := soundcloud.ParseMode(r.URL.Query().Get("mode"))
+		if err != nil {
+			JSONError(w, "некорректный режим поиска", http.StatusBadRequest)
+			return
+		}
+		results, err := searcher.Search(r.Context(), r.URL.Query().Get("q"), mode)
 		if err != nil {
 			log.Printf("soundcloud search: %v", err)
 			JSONError(w, "поиск SoundCloud сейчас недоступен", http.StatusBadGateway)

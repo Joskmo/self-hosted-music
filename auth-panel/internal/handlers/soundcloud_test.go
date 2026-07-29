@@ -15,11 +15,36 @@ type fakeSoundCloudSearcher struct {
 	query string
 }
 
-func (f *fakeSoundCloudSearcher) Search(_ context.Context, query string) ([]soundcloud.Track, error) {
+func (f *fakeSoundCloudSearcher) Search(_ context.Context, query string, _ ...soundcloud.Mode) ([]soundcloud.Track, error) {
 	f.query = query
-	return []soundcloud.Track{{Title: "Track", Artist: "Artist", URL: "https://soundcloud.com/artist/track"}}, nil
+	return []soundcloud.Track{{Title: "Track", Artist: "Artist", URL: "https://soundcloud.com/artist/track", Type: soundcloud.Tracks}}, nil
 }
 
+type modeAwareSoundCloudSearcher struct {
+	mode soundcloud.Mode
+}
+
+func (f *modeAwareSoundCloudSearcher) Search(_ context.Context, _ string, modes ...soundcloud.Mode) ([]soundcloud.Track, error) {
+	if len(modes) > 0 {
+		f.mode = modes[0]
+	}
+	return nil, nil
+}
+
+func TestSoundCloudSearchHandlerPassesRequestedMode(t *testing.T) {
+	sessions := session.New()
+	token := sessions.Create("member")
+	searcher := &modeAwareSoundCloudSearcher{}
+	req := httptest.NewRequest(http.MethodGet, "/api/discover/soundcloud?q=gone.fludd&mode=albums", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rr := httptest.NewRecorder()
+
+	SoundCloudSearchHandler(sessions, searcher)(rr, req)
+
+	if got, want := searcher.mode, soundcloud.Albums; got != want {
+		t.Fatalf("mode = %q, want %q", got, want)
+	}
+}
 func TestSoundCloudSearchHandlerReturnsResultsForAuthorizedSession(t *testing.T) {
 	sessions := session.New()
 	token := sessions.Create("member")
@@ -36,7 +61,7 @@ func TestSoundCloudSearchHandlerReturnsResultsForAuthorizedSession(t *testing.T)
 	if got, want := searcher.query, "track"; got != want {
 		t.Fatalf("query = %q, want %q", got, want)
 	}
-	if body := rr.Body.String(); body != "[{\"title\":\"Track\",\"artist\":\"Artist\",\"url\":\"https://soundcloud.com/artist/track\"}]\n" {
+	if body := rr.Body.String(); body != "[{\"title\":\"Track\",\"artist\":\"Artist\",\"url\":\"https://soundcloud.com/artist/track\",\"type\":\"tracks\"}]\n" {
 		t.Fatalf("unexpected body: %s", body)
 	}
 }

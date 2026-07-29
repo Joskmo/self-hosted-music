@@ -27,6 +27,12 @@
       <input id="query" type="search" maxlength="160" autocomplete="off" placeholder="Артист или название трека" required autofocus>
       <button id="searchButton">Найти</button>
     </form>
+    <div class="search-modes" role="tablist" aria-label="Тип выдачи SoundCloud">
+      <button class="mode-tab active" type="button" role="tab" aria-selected="true" data-mode="everything">Всё</button>
+      <button class="mode-tab" type="button" role="tab" aria-selected="false" data-mode="tracks">Треки</button>
+      <button class="mode-tab" type="button" role="tab" aria-selected="false" data-mode="albums">Альбомы</button>
+      <button class="mode-tab" type="button" role="tab" aria-selected="false" data-mode="playlists">Плейлисты</button>
+    </div>
     <p class="hint">Используется публичная выдача SoundCloud — без аккаунта и платного API.</p>
     <div id="message" aria-live="polite"></div>
     <div id="results"></div>
@@ -41,6 +47,8 @@
     const results = document.getElementById('results');
     const message = document.getElementById('message');
     const searchButton = document.getElementById('searchButton');
+    const modeTabs = document.querySelectorAll('.mode-tab');
+    let mode = 'everything';
     let activePreview = null;
 
     function setMessage(text, kind = '') {
@@ -130,6 +138,16 @@
       else window.addEventListener('load', connectWidget, {once: true});
     }
 
+    modeTabs.forEach(tab => tab.addEventListener('click', () => {
+      mode = tab.dataset.mode;
+      modeTabs.forEach(candidate => {
+        const active = candidate === tab;
+        candidate.classList.toggle('active', active);
+        candidate.setAttribute('aria-selected', String(active));
+      });
+      if (query.value.trim()) form.requestSubmit();
+    }));
+
     function render(items) {
       stopActivePreview();
       results.replaceChildren();
@@ -150,26 +168,43 @@
         const artist = document.createElement('div');
         artist.className = 'artist';
         artist.textContent = item.artist;
+        const isCollection = item.type === 'albums' || item.type === 'playlists' || item.type === 'collections';
+        if (isCollection) {
+          const type = document.createElement('span');
+          type.className = 'badge collection';
+          type.textContent = item.type === 'albums' ? 'Альбом' : item.type === 'playlists' ? 'Плейлист' : 'Подборка';
+          info.append(type);
+        }
         info.append(title, artist);
 
         const actions = document.createElement('div');
         actions.className = 'actions';
-        const preview = document.createElement('button');
-        preview.type = 'button';
-        preview.textContent = 'Предпрослушать';
         const add = document.createElement('button');
         add.type = 'button';
-        add.textContent = 'Добавить MP3';
+        add.textContent = isCollection ? (item.type === 'albums' ? 'Добавить альбом' : item.type === 'playlists' ? 'Добавить плейлист' : 'Добавить подборку') : 'Добавить MP3';
         const link = document.createElement('a');
         link.href = item.url;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.textContent = 'Открыть SoundCloud';
-        actions.append(preview, add, link);
+        let preview = null;
+        if (!isCollection) {
+          preview = document.createElement('button');
+          preview.type = 'button';
+          preview.textContent = 'Предпрослушать';
+          actions.append(preview);
+        }
+        actions.append(add, link);
         const player = document.createElement('div');
         player.className = 'soundcloud-preview';
-        preview.addEventListener('click', () => startPreview(item, player, preview, add));
-        add.addEventListener('click', () => addToQueue(item.url, add));
+        if (preview) preview.addEventListener('click', () => startPreview(item, player, preview, add));
+        add.addEventListener('click', () => {
+          if (isCollection) {
+            const label = item.type === 'albums' ? 'альбома' : item.type === 'playlists' ? 'плейлиста' : 'подборки';
+            if (!confirm(`Подтвердить загрузку ${label} «${item.title}» целиком? Все доступные треки будут добавлены в очередь.`)) return;
+          }
+          addToQueue(item.url, add, isCollection ? 'Подборка добавлена в очередь. Все доступные треки будут обработаны по очереди.' : undefined);
+        });
         row.append(info, actions, player);
         results.append(row);
       }
@@ -182,7 +217,7 @@
       searchButton.disabled = true;
       setMessage('Ищем в SoundCloud…');
       try {
-        const response = await fetch('/api/discover/soundcloud?q=' + encodeURIComponent(value));
+        const response = await fetch('/api/discover/soundcloud?q=' + encodeURIComponent(value) + '&mode=' + encodeURIComponent(mode));
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error || 'Поиск сейчас недоступен');
         render(body);

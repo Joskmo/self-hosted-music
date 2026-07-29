@@ -41,6 +41,23 @@ func TestClientAddAudioSubmitsFixedSafePayload(t *testing.T) {
 	}
 }
 
+func TestClientAddAudioAcceptsSoundCloudCollection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := body["url"], "https://soundcloud.com/gone-fludd/sets/fluddality"; got != want {
+			t.Fatalf("url = %v, want %v", got, want)
+		}
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer server.Close()
+
+	if err := NewClient(server.URL, server.Client()).AddAudio(context.Background(), "https://soundcloud.com/gone-fludd/sets/fluddality"); err != nil {
+		t.Fatal(err)
+	}
+}
 func TestClientAddAudioRejectsRedirect(t *testing.T) {
 	redirected := false
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { redirected = true }))

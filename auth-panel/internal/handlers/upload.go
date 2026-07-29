@@ -9,8 +9,13 @@ import (
 	"auth-panel/internal/upload"
 )
 
-func UploadPageHandler(w http.ResponseWriter, r *http.Request) {
-	RenderTemplate(w, "upload.html", map[string]any{"NavidromeURL": PublicNavidromeURL()})
+func UploadPageHandler(sessions *session.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if RequireSession(w, r, sessions) == "" {
+			return
+		}
+		RenderTemplate(w, "upload.html", map[string]any{"NavidromeURL": PublicNavidromeURL()})
+	}
 }
 
 func UploadHandler(sessions *session.Store) http.HandlerFunc {

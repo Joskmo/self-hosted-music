@@ -78,5 +78,7 @@ func isSoundCloudURL(raw string) bool {
 		return false
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	return len(parts) == 2 && parts[0] != "" && parts[1] != ""
+	isTrack := len(parts) == 2 && parts[0] != "" && parts[1] != ""
+	isCollection := len(parts) == 3 && parts[0] != "" && parts[1] == "sets" && parts[2] != ""
+	return isTrack || isCollection
 }
