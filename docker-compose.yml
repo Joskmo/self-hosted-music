@@ -76,6 +76,8 @@ services:
       NAVIDROME_ADMIN_PASSWORD: ${NAVIDROME_ADMIN_PASSWORD}
       MUSIC_DIR: /music
       METUBE_URL: http://metube:8081
+      # Public SoundCloud search uses the same outbound proxy as metadata lookups.
+      SOUNDCLOUD_PROXY_URL: http://host.docker.internal:10809
       # Only public MusicBrainz lookups use the existing host proxy.
       MUSICBRAINZ_PROXY_URL: http://host.docker.internal:10809
     extra_hosts:

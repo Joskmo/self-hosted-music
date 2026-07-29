@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Найти в SoundCloud — Music Server</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#63708a; --line:#e4e8f0; --blue:#2563eb; --bg:#f6f8fc; }
+    * { box-sizing:border-box; } body { margin:0; font:15px system-ui,-apple-system,sans-serif; color:var(--ink); background:var(--bg); }
+    header { background:#fff; border-bottom:1px solid var(--line); } .bar { max-width:900px; padding:15px 20px; margin:auto; display:flex; gap:16px; align-items:center; }
+    .back { color:var(--blue); text-decoration:none; } main { max-width:900px; margin:0 auto; padding:48px 20px; }
+    h1 { font-size:30px; margin:0 0 8px; } .lead { color:var(--muted); margin:0 0 25px; line-height:1.45; }
+    form { display:flex; gap:10px; } input { flex:1; min-width:0; border:1px solid #bbc4d5; border-radius:10px; padding:13px 14px; font:inherit; }
+    button { border:0; border-radius:10px; padding:12px 16px; background:var(--blue); color:#fff; font:600 14px system-ui,sans-serif; cursor:pointer; } button:hover { background:#1d4ed8; } button:disabled { opacity:.55; cursor:wait; }
+    .hint { font-size:13px; color:var(--muted); margin:12px 0 22px; } #message { min-height:22px; margin:16px 0; } .error { color:#b42318; } .success { color:#067647; }
+    .result { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:16px; background:#fff; border:1px solid var(--line); border-radius:12px; margin:9px 0; }
+    .title { font-weight:650; } .artist { color:var(--muted); margin-top:4px; } .result a { color:var(--blue); font-size:13px; }
+    .empty { color:var(--muted); padding:28px 0; text-align:center; } .notice { margin-top:32px; padding:14px 16px; border-radius:10px; background:#fff7ed; color:#9a3412; font-size:13px; line-height:1.4; }
+    @media(max-width:560px) { main { padding-top:28px; } h1 { font-size:25px; } form { flex-direction:column; } .result { align-items:flex-start; flex-direction:column; gap:12px; } .result button { width:100%; } }
+  </style>
+</head>
+<body>
+  <header><div class="bar"><a class="back" href="/upload">← Моя библиотека</a></div></header>
+  <main>
+    <h1>Найти в SoundCloud</h1>
+    <p class="lead">Найдите трек и добавьте его в очередь одним нажатием. Когда загрузка завершится, он появится в музыкальной библиотеке.</p>
+    <form id="searchForm"><input id="query" type="search" maxlength="160" autocomplete="off" placeholder="Артист или название трека" required autofocus><button id="searchButton">Найти</button></form>
+    <p class="hint">Используется публичная выдача SoundCloud — без аккаунта и платного API.</p>
+    <div id="message" role="status"></div><div id="results"></div>
+    <p class="notice">Добавляйте только свою музыку, треки с разрешённым скачиванием или контент, на который у вас есть права.</p>
+  </main>
+  <script>
+    const form = document.getElementById('searchForm'), query = document.getElementById('query'), results = document.getElementById('results'), message = document.getElementById('message'), searchButton = document.getElementById('searchButton');
+    function setMessage(text, kind='') { message.className = kind; message.textContent = text; }
+    function render(items) {
+      results.replaceChildren();
+      if (!items.length) { const e=document.createElement('p'); e.className='empty'; e.textContent='Ничего не нашли. Попробуйте другое название.'; results.append(e); return; }
+      for (const item of items) {
+        const row=document.createElement('article'); row.className='result'; const info=document.createElement('div');
+        const title=document.createElement('div'); title.className='title'; title.textContent=item.title; const artist=document.createElement('div'); artist.className='artist'; artist.textContent=item.artist;
+        const source=document.createElement('a'); source.href=item.url; source.target='_blank'; source.rel='noopener noreferrer'; source.textContent='Открыть в SoundCloud'; artist.append(' · ', source); info.append(title, artist);
+        const add=document.createElement('button'); add.textContent='Добавить MP3'; add.onclick=()=>addTrack(item.url, add); row.append(info, add); results.append(row);
+      }
+    }
+    async function addTrack(url, button) {
+      button.disabled=true; button.textContent='Добавляем…'; setMessage('');
+      try { const r=await fetch('/api/discover/soundcloud/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Не удалось добавить в очередь'); button.textContent='В очереди'; setMessage('Трек добавлен в очередь MeTube. После обработки он появится в библиотеке.','success'); }
+      catch(e) { button.disabled=false; button.textContent='Добавить MP3'; setMessage(e.message,'error'); }
+    }
+    form.addEventListener('submit', async e => { e.preventDefault(); const q=query.value.trim(); if(!q) return; searchButton.disabled=true; searchButton.textContent='Ищем…'; results.replaceChildren(); setMessage('');
+      try { const r=await fetch('/api/discover/soundcloud?q='+encodeURIComponent(q)); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Поиск сейчас недоступен'); render(j); }
+      catch(e) { setMessage(e.message,'error'); } finally { searchButton.disabled=false; searchButton.textContent='Найти'; }
+    });
+  </script>
+</body>
+</html>

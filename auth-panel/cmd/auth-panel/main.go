@@ -6,6 +6,7 @@ import (
 	"embed"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"auth-panel/internal/metadata"
 	"auth-panel/internal/metube"
 	"auth-panel/internal/session"
+	"auth-panel/internal/soundcloud"
 )
 
 //go:embed web/*
@@ -43,6 +45,8 @@ func main() {
 	sessions := session.New()
 	handlers.InitWebFS(webFiles, "web")
 	metube.Init()
+	soundCloudClient := soundcloud.NewClient("https://soundcloud.com", soundCloudHTTPClient())
+	meTubeClient := metube.NewClient(os.Getenv("METUBE_URL"), nil)
 
 	adminUser := os.Getenv("NAVIDROME_ADMIN_USER")
 	if adminUser == "" {
@@ -72,9 +76,14 @@ func main() {
 	mux.HandleFunc("POST /api/admin/metadata/{id}/reprocess", handlers.AdminMetadataReprocessHandler(database, sessions, metadataProcessor))
 	mux.HandleFunc("POST /api/admin/metadata/{id}/apply", handlers.AdminMetadataApplyHandler(database, sessions, metadataProcessor))
 	mux.HandleFunc("GET /upload", handlers.UploadPageHandler)
+	mux.HandleFunc("GET /discover", func(w http.ResponseWriter, r *http.Request) {
+		handlers.SoundCloudDiscoverPageHandler(w, r, sessions)
+	})
 	mux.HandleFunc("POST /api/upload/auth", handlers.UploadAuthHandler(sessions))
 	mux.HandleFunc("POST /api/upload", handlers.UploadHandler(sessions))
 	mux.HandleFunc("POST /api/upload/zip", handlers.UploadZipHandler(sessions))
+	mux.HandleFunc("GET /api/discover/soundcloud", handlers.SoundCloudSearchHandler(sessions, soundCloudClient))
+	mux.HandleFunc("POST /api/discover/soundcloud/add", handlers.SoundCloudAddHandler(sessions, meTubeClient))
 	mux.HandleFunc("/metube/", func(w http.ResponseWriter, r *http.Request) {
 		metube.Router(w, r, sessions)
 	})
@@ -97,6 +106,18 @@ func main() {
 		}
 	}()
 	log.Fatal(http.ListenAndServe(":"+port, mux))
+}
+
+func soundCloudHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if proxyRaw := os.Getenv("SOUNDCLOUD_PROXY_URL"); proxyRaw != "" {
+		if proxyURL, err := url.Parse(proxyRaw); err == nil {
+			transport.Proxy = http.ProxyURL(proxyURL)
+		} else {
+			log.Printf("invalid SOUNDCLOUD_PROXY_URL: %v", err)
+		}
+	}
+	return &http.Client{Timeout: 20 * time.Second, Transport: transport}
 }
 
 func ensureAdmin(database *sql.DB, username string) error {
