@@ -35,7 +35,6 @@ services:
       - UID=1000
       - GID=1000
       - YTDL_OPTIONS={"proxy":"http://host.docker.internal:10809","writethumbnail":false,"retries":3,"fragment_retries":3,"socket_timeout":60}
-      - MAX_CONCURRENT_DOWNLOADS=1
       # Required only because the trusted proxy is on the private Docker gateway.
       - ALLOW_PRIVATE_ADDRESSES=true
     extra_hosts:
