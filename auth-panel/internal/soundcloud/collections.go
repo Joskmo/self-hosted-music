@@ -19,9 +19,19 @@ var (
 
 type collectionResponse struct {
 	Collection []struct {
+		ID           int64  `json:"id"`
 		Title        string `json:"title"`
 		PermalinkURL string `json:"permalink_url"`
-		User         struct {
+		Duration     int64  `json:"duration"`
+		Description  string `json:"description"`
+		ArtworkURL   string `json:"artwork_url"`
+		Genre        string `json:"genre"`
+		Publisher    struct {
+			Artist     string `json:"artist"`
+			AlbumTitle string `json:"album_title"`
+			ISRC       string `json:"isrc"`
+		} `json:"publisher_metadata"`
+		User struct {
 			Username string `json:"username"`
 		} `json:"user"`
 	} `json:"collection"`
@@ -83,7 +93,15 @@ func (c *Client) searchAPI(ctx context.Context, query string, mode Mode) ([]Trac
 			continue
 		}
 		seen[item.PermalinkURL] = struct{}{}
-		results = append(results, Track{Title: item.Title, Artist: item.User.Username, URL: item.PermalinkURL, Type: mode})
+		artist := item.User.Username
+		if strings.TrimSpace(item.Publisher.Artist) != "" {
+			artist = item.Publisher.Artist
+		}
+		results = append(results, Track{
+			Title: item.Title, Artist: artist, URL: item.PermalinkURL, Type: mode,
+			SourceID: item.ID, DurationMS: item.Duration, Description: item.Description,
+			ArtworkURL: item.ArtworkURL, Genre: item.Genre, Album: item.Publisher.AlbumTitle, ISRC: item.Publisher.ISRC,
+		})
 	}
 	return results, nil
 }

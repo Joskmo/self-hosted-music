@@ -2,6 +2,7 @@ package soundcloud
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -27,10 +28,17 @@ const (
 )
 
 type Track struct {
-	Title  string `json:"title"`
-	Artist string `json:"artist"`
-	URL    string `json:"url"`
-	Type   Mode   `json:"type"`
+	Title       string `json:"title"`
+	Artist      string `json:"artist"`
+	URL         string `json:"url"`
+	Type        Mode   `json:"type"`
+	SourceID    int64  `json:"source_id"`
+	DurationMS  int64  `json:"duration_ms"`
+	Description string `json:"description"`
+	ArtworkURL  string `json:"artwork_url"`
+	Genre       string `json:"genre"`
+	Album       string `json:"album"`
+	ISRC        string `json:"isrc"`
 }
 
 type Client struct {
@@ -52,6 +60,64 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 		apiBaseURL = strings.TrimRight(baseURL, "/")
 	}
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiBaseURL: apiBaseURL, httpClient: &clientCopy}
+}
+
+func (c *Client) Resolve(ctx context.Context, rawURL string) (Track, error) {
+	var result Track
+	if !isCanonicalTrackURL(rawURL) {
+		return result, errors.New("некорректная ссылка SoundCloud")
+	}
+	clientID, err := c.publicClientID(ctx)
+	if err != nil {
+		return result, err
+	}
+	endpoint, err := url.Parse(c.apiBaseURL + "/resolve")
+	if err != nil {
+		return result, fmt.Errorf("SoundCloud resolve endpoint: %w", err)
+	}
+	endpoint.RawQuery = url.Values{"url": {rawURL}, "client_id": {clientID}}.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return result, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return result, fmt.Errorf("SoundCloud resolve unavailable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return result, fmt.Errorf("SoundCloud resolve returned HTTP %d", resp.StatusCode)
+	}
+	var payload struct {
+		ID           int64  `json:"id"`
+		Title        string `json:"title"`
+		PermalinkURL string `json:"permalink_url"`
+		Duration     int64  `json:"duration"`
+		Description  string `json:"description"`
+		ArtworkURL   string `json:"artwork_url"`
+		Genre        string `json:"genre"`
+		Publisher    struct {
+			Artist     string `json:"artist"`
+			AlbumTitle string `json:"album_title"`
+			ISRC       string `json:"isrc"`
+		} `json:"publisher_metadata"`
+		User struct {
+			Username string `json:"username"`
+		} `json:"user"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&payload); err != nil {
+		return result, fmt.Errorf("parse SoundCloud resolve: %w", err)
+	}
+	if !isCanonicalTrackURL(payload.PermalinkURL) || payload.ID == 0 || strings.TrimSpace(payload.Title) == "" {
+		return result, errors.New("SoundCloud resolve returned an invalid track")
+	}
+	artist := payload.User.Username
+	if strings.TrimSpace(payload.Publisher.Artist) != "" {
+		artist = payload.Publisher.Artist
+	}
+	return Track{Title: payload.Title, Artist: artist, URL: payload.PermalinkURL, Type: Tracks, SourceID: payload.ID, DurationMS: payload.Duration, Description: payload.Description, ArtworkURL: payload.ArtworkURL, Genre: payload.Genre, Album: payload.Publisher.AlbumTitle, ISRC: payload.Publisher.ISRC}, nil
 }
 
 func (m Mode) Valid() bool {

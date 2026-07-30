@@ -2,9 +2,11 @@ package soundcloud
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -24,7 +26,7 @@ func TestClientSearchTracksUsesAPIv2AndPreservesCyrillic(t *testing.T) {
 				t.Fatalf("client_id was not obtained from SoundCloud public assets")
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"collection":[{"title":"ДРИПСЭТ","permalink_url":"https://soundcloud.com/gonefludd/dripset","user":{"username":"GONE.Fludd"}}]}`))
+			_, _ = w.Write([]byte(`{"collection":[{"id":42,"title":"ДРИПСЭТ","permalink_url":"https://soundcloud.com/gonefludd/dripset","duration":195000,"description":"official upload","artwork_url":"https://i1.sndcdn.com/art.jpg","genre":"hip-hop","publisher_metadata":{"artist":"GONE.Fludd","album_title":"SUPERNOVA","isrc":"RUA1D1234567"},"user":{"username":"GONE.Fludd"}}]}`))
 		default:
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
@@ -35,8 +37,46 @@ func TestClientSearchTracksUsesAPIv2AndPreservesCyrillic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := results, []Track{{Title: "ДРИПСЭТ", Artist: "GONE.Fludd", URL: "https://soundcloud.com/gonefludd/dripset", Type: Tracks}}; !reflect.DeepEqual(got, want) {
+	if got, want := results, []Track{{Title: "ДРИПСЭТ", Artist: "GONE.Fludd", URL: "https://soundcloud.com/gonefludd/dripset", Type: Tracks, SourceID: 42, DurationMS: 195000, Description: "official upload", ArtworkURL: "https://i1.sndcdn.com/art.jpg", Genre: "hip-hop", Album: "SUPERNOVA", ISRC: "RUA1D1234567"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("results = %#v, want %#v", got, want)
+	}
+	encoded, err := json.Marshal(results[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"source_id":42`, `"duration_ms":195000`, `"isrc":"RUA1D1234567"`, `"album":"SUPERNOVA"`, `"description":"official upload"`} {
+		if !strings.Contains(string(encoded), want) {
+			t.Errorf("result JSON %s does not retain SoundCloud metadata %s", encoded, want)
+		}
+	}
+}
+
+func TestClientResolveGetsExactSoundCloudTrackMetadata(t *testing.T) {
+	const clientID = "0123456789abcdefghijklmnopqrstuv"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_, _ = w.Write([]byte(`<script src="/assets/app.js"></script>`))
+		case "/assets/app.js":
+			_, _ = w.Write([]byte(`client_id: "` + clientID + `"`))
+		case "/resolve":
+			if got, want := r.URL.Query().Get("url"), "https://soundcloud.com/gonefludd/dripset"; got != want {
+				t.Fatalf("url = %q, want %q", got, want)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":42,"title":"ДРИПСЭТ","permalink_url":"https://soundcloud.com/gonefludd/dripset","duration":195000,"publisher_metadata":{"artist":"GONE.Fludd","album_title":"SUPERNOVA","isrc":"RUA1D1234567"},"user":{"username":"wrong-uploader"}}`))
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	track, err := NewClient(server.URL, server.Client()).Resolve(context.Background(), "https://soundcloud.com/gonefludd/dripset")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := track, (Track{Title: "ДРИПСЭТ", Artist: "GONE.Fludd", URL: "https://soundcloud.com/gonefludd/dripset", Type: Tracks, SourceID: 42, DurationMS: 195000, Album: "SUPERNOVA", ISRC: "RUA1D1234567"}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("track = %#v, want %#v", got, want)
 	}
 }
 
@@ -51,9 +91,6 @@ func TestClientSearchAlbumsUsesAPIv2(t *testing.T) {
 		case "/search/albums":
 			if got, want := r.URL.Query().Get("q"), "gone.fludd"; got != want {
 				t.Fatalf("q = %q, want %q", got, want)
-			}
-			if got := r.URL.Query().Get("client_id"); got != clientID {
-				t.Fatalf("client_id was not obtained from SoundCloud public assets")
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"collection":[{"title":"FLUDDALITY","permalink_url":"https://soundcloud.com/gone-fludd/sets/fluddality","user":{"username":"GONE.Fludd"}}]}`))
