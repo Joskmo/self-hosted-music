@@ -46,9 +46,12 @@ services:
       DB_USER: auth
       DB_PASSWORD: ${AUTH_DB_PASSWORD}
       NAVIDROME_URL: http://navidrome:4533
+      NAVIDROME_PUBLIC_URL: http://localhost:4533
       NAVIDROME_ADMIN_USER: ${NAVIDROME_ADMIN_USER}
       NAVIDROME_ADMIN_PASSWORD: ${NAVIDROME_ADMIN_PASSWORD}
       MUSIC_DIR: /music
+      METUBE_URL: http://metube:8081
+      AUTH_PANEL_ORIGIN: http://localhost:3000
     volumes:
       - ./music:/music
     networks:
@@ -56,6 +59,7 @@ services:
     depends_on:
       - auth-db
       - navidrome
+      - metube
 
   metube:
     image: ghcr.io/alexta69/metube:latest

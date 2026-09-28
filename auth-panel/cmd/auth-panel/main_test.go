@@ -82,3 +82,31 @@ func TestAdminTemplateDoesNotInterpolateUserFieldsIntoHTML(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateAuthPanelOrigin(t *testing.T) {
+	tests := []struct {
+		name    string
+		origin  string
+		wantErr bool
+	}{
+		{name: "production HTTPS", origin: "https://music.example.test"},
+		{name: "localhost HTTP", origin: "http://localhost:3000"},
+		{name: "IPv4 loopback HTTP", origin: "http://127.0.0.1:3000"},
+		{name: "IPv6 loopback HTTP", origin: "http://[::1]:3000"},
+		{name: "public HTTP", origin: "http://music.example.test", wantErr: true},
+		{name: "LAN HTTP", origin: "http://192.168.1.7:3000", wantErr: true},
+		{name: "path", origin: "https://music.example.test/login", wantErr: true},
+		{name: "query", origin: "https://music.example.test?from=docs", wantErr: true},
+		{name: "userinfo", origin: "https://user@music.example.test", wantErr: true},
+		{name: "empty", origin: "", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAuthPanelOrigin(tt.origin)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateAuthPanelOrigin(%q) error = %v, wantErr %v", tt.origin, err, tt.wantErr)
+			}
+		})
+	}
+}

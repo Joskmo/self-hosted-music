@@ -1,6 +1,7 @@
 .env
 .env.local
 .env.*.local
+.service-data/
 data/
 music/
 auth-db-data/

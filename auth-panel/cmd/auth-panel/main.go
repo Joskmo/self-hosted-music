@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"auth-panel/internal/db"
@@ -48,8 +51,8 @@ func main() {
 	soundCloudClient := soundcloud.NewClient("https://soundcloud.com", soundCloudHTTPClient())
 	meTubeClient := metube.NewClient(os.Getenv("METUBE_URL"), nil)
 	authPanelOrigin := os.Getenv("AUTH_PANEL_ORIGIN")
-	if parsed, err := url.Parse(authPanelOrigin); err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		log.Fatal("AUTH_PANEL_ORIGIN must be a canonical HTTPS origin")
+	if err := validateAuthPanelOrigin(authPanelOrigin); err != nil {
+		log.Fatal("AUTH_PANEL_ORIGIN must be a canonical HTTPS origin or a loopback HTTP origin")
 	}
 
 	adminUser := os.Getenv("NAVIDROME_ADMIN_USER")
@@ -118,6 +121,26 @@ func main() {
 		}
 	}()
 	log.Fatal(http.ListenAndServe(":"+port, mux))
+}
+
+func validateAuthPanelOrigin(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil || parsed.Path != "" || parsed.RawPath != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.Opaque != "" {
+		return errors.New("origin must contain only a scheme and host")
+	}
+	if parsed.Scheme == "https" {
+		return nil
+	}
+	if parsed.Scheme != "http" {
+		return errors.New("origin must use HTTPS")
+	}
+	if strings.EqualFold(parsed.Hostname(), "localhost") {
+		return nil
+	}
+	if ip := net.ParseIP(parsed.Hostname()); ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return errors.New("HTTP origin must use a loopback host")
 }
 
 func soundCloudHTTPClient() *http.Client {
