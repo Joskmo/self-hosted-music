@@ -17,7 +17,19 @@ type fakeSoundCloudSearcher struct {
 
 func (f *fakeSoundCloudSearcher) Search(_ context.Context, query string, _ ...soundcloud.Mode) ([]soundcloud.Track, error) {
 	f.query = query
-	return []soundcloud.Track{{Title: "Track", Artist: "Artist", URL: "https://soundcloud.com/artist/track", Type: soundcloud.Tracks}}, nil
+	return []soundcloud.Track{{
+		Title:       "Track",
+		Artist:      "Artist",
+		URL:         "https://soundcloud.com/artist/track",
+		Type:        soundcloud.Tracks,
+		SourceID:    42,
+		DurationMS:  195000,
+		Description: "official upload",
+		ArtworkURL:  "https://i1.sndcdn.com/art.jpg",
+		Genre:       "hip-hop",
+		Album:       "Album",
+		ISRC:        "RUA1D1234567",
+	}}, nil
 }
 
 type modeAwareSoundCloudSearcher struct {
@@ -61,7 +73,7 @@ func TestSoundCloudSearchHandlerReturnsResultsForAuthorizedSession(t *testing.T)
 	if got, want := searcher.query, "track"; got != want {
 		t.Fatalf("query = %q, want %q", got, want)
 	}
-	if body := rr.Body.String(); body != "[{\"title\":\"Track\",\"artist\":\"Artist\",\"url\":\"https://soundcloud.com/artist/track\",\"type\":\"tracks\"}]\n" {
+	if body := rr.Body.String(); body != "[{\"title\":\"Track\",\"artist\":\"Artist\",\"url\":\"https://soundcloud.com/artist/track\",\"type\":\"tracks\",\"source_id\":42,\"duration_ms\":195000,\"description\":\"official upload\",\"artwork_url\":\"https://i1.sndcdn.com/art.jpg\",\"genre\":\"hip-hop\",\"album\":\"Album\",\"isrc\":\"RUA1D1234567\"}]\n" {
 		t.Fatalf("unexpected body: %s", body)
 	}
 }
